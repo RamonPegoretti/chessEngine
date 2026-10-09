@@ -23,6 +23,36 @@ PIECE_VALUES = {
     chess.KING: 0,
 }
 
+# How much the piece-square tables count, in percent. 100 uses them as
+# written. Training (chesscore/train.py) tunes this and the piece values.
+POSITION_WEIGHT = 100
+
+WEIGHT_NAMES = {
+    "pawn": chess.PAWN,
+    "knight": chess.KNIGHT,
+    "bishop": chess.BISHOP,
+    "rook": chess.ROOK,
+    "queen": chess.QUEEN,
+}
+
+
+def get_weights():
+    """The evaluation weights currently in use, as a plain dict."""
+    weights = {name: PIECE_VALUES[piece] for name, piece in WEIGHT_NAMES.items()}
+    weights["position"] = POSITION_WEIGHT
+    return weights
+
+
+def set_weights(weights):
+    """Make the engine evaluate with these weights (as from get_weights)."""
+    global POSITION_WEIGHT
+    for name, piece in WEIGHT_NAMES.items():
+        PIECE_VALUES[piece] = int(weights[name])
+    POSITION_WEIGHT = int(weights["position"])
+
+
+DEFAULT_WEIGHTS = get_weights()
+
 # Piece-square tables: a small bonus or malus depending on where a piece
 # stands. Written from White's point of view with a8 in the top-left corner,
 # so a White piece on square s reads entry [chess.square_mirror(s)] and a
@@ -109,9 +139,11 @@ def evaluate(board):
     for square, piece in board.piece_map().items():
         table = PIECE_SQUARE_TABLES[piece.piece_type]
         if piece.color == chess.WHITE:
-            score += PIECE_VALUES[piece.piece_type] + table[chess.square_mirror(square)]
+            bonus = table[chess.square_mirror(square)] * POSITION_WEIGHT // 100
+            score += PIECE_VALUES[piece.piece_type] + bonus
         else:
-            score -= PIECE_VALUES[piece.piece_type] + table[square]
+            bonus = table[square] * POSITION_WEIGHT // 100
+            score -= PIECE_VALUES[piece.piece_type] + bonus
     return score
 
 

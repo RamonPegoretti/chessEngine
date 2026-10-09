@@ -149,10 +149,10 @@ def test_menu_quit_by_number_and_name(monkeypatch):
 
 
 def test_menu_unknown_and_unimplemented(monkeypatch, capsys):
-    feed(monkeypatch, "train", "banana", "quit")
+    feed(monkeypatch, "review", "banana", "quit")
     cli.main()
     out = capsys.readouterr().out
-    assert "'train' is not implemented yet." in out
+    assert "'review' is not implemented yet." in out
     assert "Unknown option: banana" in out
 
 
