@@ -88,10 +88,10 @@ def test_render_board_start_position():
     assert lines[8] == "1 R N B Q K B N R"
 
 
-def test_history_starts_new_column_after_25_moves():
-    sans = ["Nf3", "Nf6", "Ng1", "Ng8"] * 13  # 52 plies = 26 full moves
+def test_history_starts_new_column_after_20_moves():
+    sans = ["Nf3", "Nf6", "Ng1", "Ng8"] * 10 + ["Nf3", "Nf6"]  # 21 full moves
     lines = render_history(sans)
-    assert len(lines) == 2 + 25
+    assert len(lines) == 2 + 20
     assert lines[2].startswith("  1. Nf3")
-    assert " 26. Ng1" in lines[2]
-    assert " 26." not in "".join(lines[3:])
+    assert " 21. Nf3" in lines[2]
+    assert " 21." not in "".join(lines[3:])
