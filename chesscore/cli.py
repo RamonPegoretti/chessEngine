@@ -4,9 +4,11 @@ import chess
 
 from chesscore import VERSION
 from chesscore.engine import DEFAULT_DEPTH, MATE_SCORE, find_best_move
+from chesscore.uci import ExternalEngine, match_result, play_match_game
 
 MENU = [
     ("play", "Play a game - Human vs Engine"),
+    ("match", "Watch ChessCore vs an external engine (Stockfish)"),
     ("train", "Train the engine (self-play / external engine)"),
     ("stats", "View training statistics & rating history"),
     ("review", "Review a past game from PGN"),
@@ -158,6 +160,47 @@ def play():
     print(game_result_text(board))
 
 
+def ask_elo():
+    while True:
+        answer = input("external engine rating, empty for full strength > ").strip()
+        if not answer:
+            return None
+        if answer.isdigit():
+            return int(answer)
+        print("Rating must be a whole number, e.g. 1500.")
+
+
+def match():
+    """Engine vs external engine (REQ-007-002): watch a whole game."""
+    color = ask("ChessCore plays white or black? [w/b] > ", ["w", "b"])
+    chesscore_color = chess.WHITE if color == "w" else chess.BLACK
+    depth = ask_depth()
+    elo = ask_elo()
+
+    try:
+        external = ExternalEngine(elo=elo)
+    except FileNotFoundError as error:
+        print(error)
+        return
+
+    sans = []
+
+    def show(board, move):
+        before = board.copy()
+        before.pop()
+        sans.append(before.san(move))
+        print()
+        print(render_screen(board, sans, False, None, depth))
+
+    with external:
+        white = "ChessCore" if chesscore_color == chess.WHITE else external.name
+        black = external.name if chesscore_color == chess.WHITE else "ChessCore"
+        print(f"{white} (white) vs {black} (black)")
+        board = play_match_game(external, chesscore_color, depth, on_move=show)
+
+    print(f"{white} vs {black}: {match_result(board)}")
+
+
 def print_menu():
     print()
     print("CHESSCORE")
@@ -176,6 +219,8 @@ def main():
             choice = names[int(choice) - 1]
         if choice == "play":
             play()
+        elif choice == "match":
+            match()
         elif choice == "quit":
             return
         elif choice in names:

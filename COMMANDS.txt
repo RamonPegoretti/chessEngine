@@ -32,6 +32,14 @@ python -m pip install -r requirements.txt
 python -m chesscore
 
 
+4b) STOCKFISH, for the "match" mode (first time only)
+---------------------------------------------------
+Download Stockfish from https://stockfishchess.org/download/ and unzip it.
+Then, in the same command prompt before running the game:
+set CHESSCORE_ENGINE=C:\path\to\stockfish.exe
+(replace the path with where stockfish.exe actually is)
+
+
 5) RUN THE TESTS
 ----------------
 python -m pytest
