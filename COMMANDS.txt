@@ -39,12 +39,13 @@ If the board shows strange codes like [48;5;180m instead of colours:
 python -m chesscore --plain
 
 
-4b) STOCKFISH, for the "match" mode (first time only)
----------------------------------------------------
-Download Stockfish from https://stockfishchess.org/download/ and unzip it.
-Then, in the same command prompt before running the game:
-set CHESSCORE_ENGINE=C:\path\to\stockfish.exe
-(replace the path with where stockfish.exe actually is)
+4b) STOCKFISH, for the "match" mode
+-----------------------------------
+Nothing to do: Stockfish 18 comes with the project (engines\ folder) and is
+unpacked automatically the first time you choose "match".
+
+To use a different engine instead, before running the game:
+set CHESSCORE_ENGINE=C:\path\to\engine.exe
 
 
 5) RUN THE TESTS

@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Stockfish unpacked from engines/stockfish-18-windows.zip on first run
+engines/stockfish/

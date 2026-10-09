@@ -7,6 +7,7 @@ that in a small class and adds the engine vs external engine mode (EvME).
 
 import os
 import shutil
+import zipfile
 
 import chess
 import chess.engine
@@ -19,16 +20,44 @@ ENGINE_PATH_VARIABLE = "CHESSCORE_ENGINE"
 
 DEFAULT_MOVE_TIME = 0.1  # seconds per move for the external engine
 
+# Stockfish for Windows ships zipped in the repository (the executable is
+# over GitHub's 100 MB file limit). It is unpacked on first use.
+ENGINES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "engines")
+BUNDLED_ZIP = "stockfish-18-windows.zip"
+BUNDLED_EXE = "stockfish.exe"
+
+
+def bundled_engine_path(engines_dir=ENGINES_DIR):
+    """Path of the bundled Stockfish, unzipping it the first time.
+
+    None if the zip is missing.
+    """
+    exe = os.path.join(engines_dir, "stockfish", BUNDLED_EXE)
+    if os.path.exists(exe):
+        return exe
+    archive = os.path.join(engines_dir, BUNDLED_ZIP)
+    if not os.path.exists(archive):
+        return None
+    print("Unpacking Stockfish (first run only)...")
+    with zipfile.ZipFile(archive) as z:
+        z.extractall(os.path.join(engines_dir, "stockfish"))
+    return exe
+
 
 def find_engine_path():
     """Path of the external engine, or None if it cannot be found.
 
-    Looks at the CHESSCORE_ENGINE variable first, then for "stockfish" on
-    the PATH.
+    Looks at the CHESSCORE_ENGINE variable first, then (on Windows) the
+    Stockfish bundled in engines/, then for "stockfish" on the PATH.
     """
     path = os.environ.get(ENGINE_PATH_VARIABLE)
     if path:
         return path
+    if os.name == "nt":
+        path = bundled_engine_path()
+        if path:
+            return path
     return shutil.which("stockfish")
 
 
