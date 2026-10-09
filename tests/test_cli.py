@@ -96,11 +96,10 @@ def test_parse_move_rejects_garbage_and_illegal(text):
     assert cli.parse_move(chess.Board(), text) is None
 
 
-@pytest.mark.xfail(strict=True, reason="parse_move returns a null move; remove xfail once fixed")
 @pytest.mark.parametrize("text", ["0000", "--", "Z0", "@@@@"])
 def test_parse_move_rejects_null_move(text):
-    # python-chess reads these as a null move ("pass"). The play loop would
-    # push it and the human would skip their turn.
+    # python-chess reads these as a null move ("pass"); accepting one would
+    # let the human skip their turn.
     assert cli.parse_move(chess.Board(), text) is None
 
 
