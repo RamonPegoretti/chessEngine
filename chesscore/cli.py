@@ -76,9 +76,12 @@ def parse_move(board, text):
     except ValueError:
         pass
     try:
-        return board.parse_san(text)
+        move = board.parse_san(text)
     except ValueError:
         return None
+    # parse_san turns inputs like "--" or "0000" into a null move (a passed
+    # turn), which is not a real move in a game.
+    return move if move else None
 
 
 def ask(prompt, choices):
