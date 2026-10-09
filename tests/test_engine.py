@@ -72,6 +72,11 @@ def test_parse_move_accepts_coordinates_and_san():
     assert parse_move(board, "hello") is None
 
 
+@pytest.mark.parametrize("text", ["0000", "--", "Z0", "@@@@"])
+def test_parse_move_rejects_null_move(text):
+    assert parse_move(chess.Board(), text) is None
+
+
 def test_parse_move_defaults_promotion_to_queen():
     board = chess.Board("8/4P3/8/8/8/8/8/k6K w - - 0 1")
     assert parse_move(board, "e7e8") == chess.Move.from_uci("e7e8q")
