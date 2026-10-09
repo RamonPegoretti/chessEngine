@@ -312,6 +312,8 @@ def train():
         print(error)
         return
 
+    if external.elo != elo:
+        print(f"{external.name} cannot play at {elo}, using {external.elo} instead.")
     storage = Storage()
     print(f"Training ChessCore v{storage.current_version()['version']} "
           f"against {external.name}: {games} games at depth {depth}")
@@ -323,7 +325,7 @@ def train():
               f"{game['result']}, {outcome}, rating {stats['rating']:.0f}{saved}")
 
     with external:
-        summary = run_training(storage, external, elo, games, depth, on_game=show)
+        summary = run_training(storage, external, external.elo, games, depth, on_game=show)
 
     print()
     print(f"Results: {summary['wins']} won, {summary['draws']} drawn, "
