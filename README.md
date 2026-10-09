@@ -38,6 +38,25 @@ it on the PATH as `stockfish`. To use another engine, point
 set CHESSCORE_ENGINE=C:\path\to\engine.exe
 ```
 
+## Training
+
+`train` plays a number of games against Stockfish (alternating colours) and
+then tunes the evaluation weights from the results (Texel tuning: piece
+values and how much the piece-square tables count). Each tuning that fits the
+results better is saved as a new engine version, and `play`, `match` and
+`train` always use the latest one. `stats` shows the results and estimated
+rating of every version.
+
+Training data goes in `data/`:
+
+- `games.json`: every training game with its moves and result
+- `stats.json`: wins, draws, losses and estimated Elo per engine version
+- `versions.json`: the weights of every engine version
+- `pgn/`: about one game in ten as a PGN file
+
+Tuning waits until about 1000 positions (around 20 games) have been
+collected, and each session changes the weights only a little.
+
 ## Tests
 
 ```
@@ -48,5 +67,7 @@ python -m pytest
 
 - `chesscore/engine.py`: evaluation and minimax search with alpha-beta pruning (REQ-004, REQ-005)
 - `chesscore/uci.py`: external engine over UCI and the engine vs external engine mode (REQ-007)
+- `chesscore/train.py`: training mode, Elo estimate and weight tuning (REQ-010, REQ-012)
+- `chesscore/storage.py`: JSON files, PGN export and engine versions (REQ-008, REQ-009, REQ-011)
 - `chesscore/cli.py`: main menu, Human vs Engine mode (REQ-003) and match mode
 - `tests/`: automated tests, including perft (REQ-013)

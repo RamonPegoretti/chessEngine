@@ -8,6 +8,9 @@ import chess
 
 from chesscore import VERSION
 from chesscore.engine import DEFAULT_DEPTH, MATE_SCORE, find_best_move
+from chesscore import engine
+from chesscore.storage import Storage
+from chesscore.train import MIN_POSITIONS, train as run_training
 from chesscore.uci import ExternalEngine, match_result, play_match_game
 
 MENU = [
@@ -287,6 +290,80 @@ def match():
     print(f"{white} vs {black}: {match_result(board)}")
 
 
+def ask_number(prompt, default, minimum=1):
+    while True:
+        answer = input(f"{prompt} [{default}] > ").strip()
+        if not answer:
+            return default
+        if answer.isdigit() and int(answer) >= minimum:
+            return int(answer)
+        print(f"Please enter a whole number of at least {minimum}.")
+
+
+def train():
+    """Training mode (REQ-012): games against Stockfish, then weight tuning."""
+    games = ask_number("number of games", 10)
+    depth = ask_depth()
+    elo = ask_number("Stockfish rating", 1320, minimum=1)
+
+    try:
+        external = ExternalEngine(elo=elo)
+    except FileNotFoundError as error:
+        print(error)
+        return
+
+    storage = Storage()
+    print(f"Training ChessCore v{storage.current_version()['version']} "
+          f"against {external.name}: {games} games at depth {depth}")
+
+    def show(number, game, score, stats):
+        outcome = {1: "won", 0.5: "draw", 0: "lost"}[score]
+        saved = "  (saved as PGN)" if "pgn" in game else ""
+        print(f"game {number}/{games}: {game['white']} vs {game['black']} "
+              f"{game['result']}, {outcome}, rating {stats['rating']:.0f}{saved}")
+
+    with external:
+        summary = run_training(storage, external, elo, games, depth, on_game=show)
+
+    print()
+    print(f"Results: {summary['wins']} won, {summary['draws']} drawn, "
+          f"{summary['losses']} lost. Estimated rating {summary['rating']:.0f}.")
+    if summary["error_before"] is None:
+        print(f"Collected {summary['positions']} positions so far; tuning starts "
+              f"at {MIN_POSITIONS} (about {MIN_POSITIONS // 50} games).")
+        return
+    if summary["new_version"] is None:
+        print("Tuning found no better weights; the engine version stays the same.")
+        return
+    new = summary["new_version"]
+    print(f"Tuned the evaluation on {summary['positions']} positions "
+          f"(error {summary['error_before']:.4f} -> {summary['error_after']:.4f}).")
+    print(f"New engine version v{new['version']}:")
+    for name, value in new["weights"].items():
+        old = summary["old_weights"][name]
+        change = f"  ({value - old:+d})" if value != old else ""
+        print(f"  {name:<9}{value}{change}")
+
+
+def stats():
+    """Training statistics and rating history per engine version."""
+    storage = Storage()
+    all_stats = storage.stats()
+    if not all_stats:
+        print("No training games yet. Choose 'train' to play some.")
+        return
+    print(f"{'version':<9}{'games':>6}{'won':>6}{'drawn':>7}{'lost':>6}{'rating':>8}")
+    for version in storage.versions():
+        number = version["version"]
+        if str(number) not in all_stats:
+            continue
+        s = all_stats[str(number)]
+        print(f"v{number:<8}{s['games']:>6}{s['wins']:>6}{s['draws']:>7}"
+              f"{s['losses']:>6}{s['rating']:>8.0f}")
+    current = storage.current_version()
+    print(f"Current version: v{current['version']} ({current['note']})")
+
+
 def print_menu():
     print()
     print("CHESSCORE")
@@ -335,6 +412,8 @@ def main(argv=()):
     global USE_SYMBOLS, USE_COLORS
     USE_SYMBOLS = "--letters" not in argv and terminal_can_show_symbols()
     USE_COLORS = "--plain" not in argv and enable_colors()
+    # Play with the latest trained engine version.
+    engine.set_weights(Storage().current_version()["weights"])
 
     names = [name for name, _ in MENU]
     while True:
@@ -346,6 +425,10 @@ def main(argv=()):
             play()
         elif choice == "match":
             match()
+        elif choice == "train":
+            train()
+        elif choice == "stats":
+            stats()
         elif choice == "quit":
             return
         elif choice in names:
