@@ -1,5 +1,7 @@
 """Terminal interface: main menu and Human vs Engine mode (REQ-003)."""
 
+import os
+import re
 import sys
 
 import chess
@@ -17,14 +19,30 @@ MENU = [
     ("quit", "Exit ChessCore"),
 ]
 
-FILES = "  a b c d e f g h"
-
 # Draw pieces as chess symbols (True) or letters (False). Changed by
 # running "python -m chesscore --letters", for terminals that show the
 # symbols as boxes (e.g. the old cmd window).
 USE_SYMBOLS = True
 
-MOVES_PER_COLUMN = 25
+# Draw the board with coloured light and dark squares (True) or as plain
+# text (False). Turned off by "--plain", or when the terminal has no colours.
+USE_COLORS = True
+
+# ANSI escape codes (256-colour palette) for the coloured board.
+RESET = "\033[0m"
+LIGHT_SQUARE = "\033[48;5;180m"
+DARK_SQUARE = "\033[48;5;137m"
+LIGHT_HIGHLIGHT = "\033[48;5;186m"   # last move, on a light square
+DARK_HIGHLIGHT = "\033[48;5;143m"    # last move, on a dark square
+WHITE_PIECE = "\033[1;38;5;231m"
+BLACK_PIECE = "\033[1;38;5;16m"
+BOARD_SYMBOLS = {
+    chess.KING: "♚", chess.QUEEN: "♛", chess.ROOK: "♜",
+    chess.BISHOP: "♝", chess.KNIGHT: "♞", chess.PAWN: "♙",
+}
+ANSI_CODE = re.compile(r"\033\[[0-9;]*m")
+
+MOVES_PER_COLUMN = 20
 HISTORY_COLUMN_WIDTH = 22
 
 
@@ -51,6 +69,49 @@ def render_board(board, flipped=False, symbols=False):
         lines.append(f"{rank + 1} " + " ".join(cells))
     lines.append(header)
     return lines
+
+
+def render_color_board(board, flipped=False, symbols=False, last_move=None):
+    """Board with coloured squares, three characters wide each.
+
+    Every square is " X " (or "   " when empty), so the columns stay lined
+    up whatever piece stands on them. The side of a piece is shown by its
+    colour, so both sides use the same symbols: the filled ones, which show
+    the colour best, except the pawn. The filled pawn is an emoji in some
+    fonts and is drawn twice as wide, which breaks the grid.
+    """
+    ranks = range(8) if flipped else range(7, -1, -1)
+    files = range(7, -1, -1) if flipped else range(8)
+    highlighted = {last_move.from_square, last_move.to_square} if last_move else set()
+    header = "  " + "".join(f" {chess.FILE_NAMES[f]} " for f in files)
+    lines = [header]
+    for rank in ranks:
+        row = f"{rank + 1} "
+        for file in files:
+            square = chess.square(file, rank)
+            light = (file + rank) % 2 == 1
+            if square in highlighted:
+                background = LIGHT_HIGHLIGHT if light else DARK_HIGHLIGHT
+            else:
+                background = LIGHT_SQUARE if light else DARK_SQUARE
+            piece = board.piece_at(square)
+            if piece is None:
+                text = " "
+            elif symbols:
+                text = BOARD_SYMBOLS[piece.piece_type]
+            else:
+                text = piece.symbol()
+            if piece is not None:
+                text = (WHITE_PIECE if piece.color == chess.WHITE else BLACK_PIECE) + text
+            row += f"{background} {text} {RESET}"
+        lines.append(row + f" {rank + 1}")
+    lines.append(header)
+    return lines
+
+
+def visible_width(text):
+    """Length of text on screen, ignoring colour codes."""
+    return len(ANSI_CODE.sub("", text))
 
 
 def render_history(sans):
@@ -83,14 +144,20 @@ def format_score(score):
     return f"{score / 100:+.1f}"
 
 
-def render_screen(board, sans, flipped, last_score, depth, symbols=False):
-    left = render_board(board, flipped, symbols)
+def render_screen(board, sans, flipped, last_score, depth, symbols=False,
+                  colors=False):
+    if colors:
+        last_move = board.peek() if board.move_stack else None
+        left = render_color_board(board, flipped, symbols, last_move)
+    else:
+        left = render_board(board, flipped, symbols)
     right = render_history(sans)
     height = max(len(left), len(right))
     left += [""] * (height - len(left))
     right += [""] * (height - len(right))
-    width = len(FILES) + 4
-    lines = [f"{l:<{width}}    {r}" for l, r in zip(left, right)]
+    width = max(visible_width(l) for l in left) + 4
+    lines = [l + " " * (width - visible_width(l)) + r
+             for l, r in zip(left, right)]
     lines.append("")
     lines.append(f"eval {format_score(last_score)} depth {depth}")
     return "\n".join(lines)
@@ -156,7 +223,7 @@ def play():
     while not board.is_game_over():
         print()
         print(render_screen(board, sans, human == chess.BLACK, last_score, depth,
-                            USE_SYMBOLS))
+                            USE_SYMBOLS, USE_COLORS))
         if board.turn == human:
             text = input("your move (e.g. e2e4, 'quit' to stop) > ").strip()
             if text.lower() == "quit":
@@ -174,7 +241,7 @@ def play():
 
     print()
     print(render_screen(board, sans, human == chess.BLACK, last_score, depth,
-                            USE_SYMBOLS))
+                            USE_SYMBOLS, USE_COLORS))
     print(game_result_text(board))
 
 
@@ -208,7 +275,8 @@ def match():
         before.pop()
         sans.append(before.san(move))
         print()
-        print(render_screen(board, sans, False, None, depth, USE_SYMBOLS))
+        print(render_screen(board, sans, False, None, depth, USE_SYMBOLS,
+                            USE_COLORS))
 
     with external:
         white = "ChessCore" if chesscore_color == chess.WHITE else external.name
@@ -237,10 +305,36 @@ def terminal_can_show_symbols():
     return True
 
 
+def enable_colors():
+    """Turn on colour codes in the terminal. False if it cannot show them."""
+    if not sys.stdout.isatty():
+        return False
+    if os.name != "nt":
+        return True
+    # Windows consoles only understand colour codes after this mode is set.
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)  # standard output
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        return bool(kernel32.SetConsoleMode(
+            handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING))
+    except (AttributeError, OSError):
+        return False
+
+
 def main(argv=()):
-    """Run the menu. argv: command-line options, "--letters" for letter pieces."""
-    global USE_SYMBOLS
+    """Run the menu.
+
+    argv: command-line options. "--letters" draws pieces as letters,
+    "--plain" draws the board without colours.
+    """
+    global USE_SYMBOLS, USE_COLORS
     USE_SYMBOLS = "--letters" not in argv and terminal_can_show_symbols()
+    USE_COLORS = "--plain" not in argv and enable_colors()
 
     names = [name for name, _ in MENU]
     while True:
