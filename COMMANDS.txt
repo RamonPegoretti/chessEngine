@@ -1,0 +1,46 @@
+ChessCore - commands to get the project from GitHub and run it
+==============================================================
+Windows command prompt (cmd). Requires Git and Python installed.
+
+
+1) FIRST TIME: download the project
+-----------------------------------
+cd C:\DatiAllievo
+git clone https://github.com/RamonPegoretti/chessEngine.git
+cd chessEngine
+
+
+2) EVERY TIME: get the latest changes
+-------------------------------------
+cd C:\DatiAllievo\chessEngine
+git checkout main
+git pull origin main
+
+To try a branch that is not merged yet (for example an open pull request):
+git fetch origin
+git checkout claude/project-thread-4upn5q
+git pull origin claude/project-thread-4upn5q
+
+
+3) INSTALL THE LIBRARIES (first time, and whenever requirements.txt changes)
+---------------------------------------------------------------------------
+python -m pip install -r requirements.txt
+
+
+4) RUN THE GAME
+---------------
+python -m chesscore
+
+
+5) RUN THE TESTS
+----------------
+python -m pytest
+
+Only the tests in one file:
+python -m pytest tests\test_engine.py
+
+Show the name of every test:
+python -m pytest -v
+
+
+If "python" is not found, try "py" instead (for example: py -m chesscore).
