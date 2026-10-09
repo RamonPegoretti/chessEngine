@@ -15,6 +15,9 @@ MENU = [
 
 FILES = "  a b c d e f g h"
 
+MOVES_PER_COLUMN = 25
+HISTORY_COLUMN_WIDTH = 22
+
 
 def render_board(board, flipped=False):
     """Board as text lines, uppercase for White and lowercase for Black."""
@@ -33,12 +36,24 @@ def render_board(board, flipped=False):
 
 
 def render_history(sans):
-    """Move history in SAN, one line per full move."""
-    lines = ["MOVE HISTORY", "-" * 24]
+    """Move history in SAN, one line per full move.
+
+    After MOVES_PER_COLUMN full moves a new column starts to the right, so
+    the history never grows taller than the board and pushes it off screen.
+    """
+    rows = []
     for i in range(0, len(sans), 2):
         white = sans[i]
         black = sans[i + 1] if i + 1 < len(sans) else "..."
-        lines.append(f"{i // 2 + 1:>3}. {white:<8}{black}")
+        rows.append(f"{i // 2 + 1:>3}. {white:<9}{black:<8}")
+
+    columns = [rows[i:i + MOVES_PER_COLUMN]
+               for i in range(0, len(rows), MOVES_PER_COLUMN)] or [[]]
+    width = len(columns) * (HISTORY_COLUMN_WIDTH + 2) - 2
+    lines = ["MOVE HISTORY", "-" * width]
+    for r in range(len(columns[0])):
+        cells = [col[r] if r < len(col) else "" for col in columns]
+        lines.append("  ".join(f"{c:<{HISTORY_COLUMN_WIDTH}}" for c in cells).rstrip())
     return lines
 
 

@@ -3,7 +3,7 @@
 import chess
 import pytest
 
-from chesscore.cli import parse_move, render_board
+from chesscore.cli import parse_move, render_board, render_history
 from chesscore.engine import MATE_SCORE, evaluate, find_best_move
 
 
@@ -86,3 +86,12 @@ def test_render_board_start_position():
     lines = render_board(chess.Board())
     assert lines[1] == "8 r n b q k b n r"
     assert lines[8] == "1 R N B Q K B N R"
+
+
+def test_history_starts_new_column_after_25_moves():
+    sans = ["Nf3", "Nf6", "Ng1", "Ng8"] * 13  # 52 plies = 26 full moves
+    lines = render_history(sans)
+    assert len(lines) == 2 + 25
+    assert lines[2].startswith("  1. Nf3")
+    assert " 26. Ng1" in lines[2]
+    assert " 26." not in "".join(lines[3:])
