@@ -37,14 +37,14 @@ def test_engine_path_from_environment(monkeypatch):
 
 def test_engine_path_falls_back_to_path_lookup(monkeypatch):
     monkeypatch.delenv(uci.ENGINE_PATH_VARIABLE, raising=False)
-    monkeypatch.setattr(uci.os, "name", "posix")  # no bundled engine lookup
+    monkeypatch.setattr(uci, "bundled_engine_path", lambda *a, **k: None)
     monkeypatch.setattr(uci.shutil, "which", lambda name: f"/usr/bin/{name}")
     assert uci.find_engine_path() == "/usr/bin/stockfish"
 
 
 def test_engine_path_none_when_nothing_installed(monkeypatch):
     monkeypatch.delenv(uci.ENGINE_PATH_VARIABLE, raising=False)
-    monkeypatch.setattr(uci.os, "name", "posix")  # no bundled engine lookup
+    monkeypatch.setattr(uci, "bundled_engine_path", lambda *a, **k: None)
     monkeypatch.setattr(uci.shutil, "which", lambda name: None)
     assert uci.find_engine_path() is None
 
