@@ -142,7 +142,7 @@ def test_ask_depth(monkeypatch, lines, depth):
 
 
 def test_menu_quit_by_number_and_name(monkeypatch):
-    feed(monkeypatch, "5")
+    feed(monkeypatch, str(len(cli.MENU)))  # quit is the last entry
     cli.main()
     feed(monkeypatch, "quit")
     cli.main()
@@ -204,3 +204,75 @@ def test_play_passes_chosen_depth_to_engine(monkeypatch):
     feed(monkeypatch, "b", "4", "quit")
     cli.play()
     assert depths == [4]
+
+
+# --- Match mode (ChessCore vs external engine) --------------------------------
+
+
+class FakeExternal:
+    """Stands in for ExternalEngine: plays the first legal move."""
+
+    name = "Fake"
+    closed = False
+
+    def __init__(self, path=None, move_time=None, elo=None):
+        self.elo = elo
+
+    def play(self, board):
+        return next(iter(board.legal_moves))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        FakeExternal.closed = True
+
+
+def test_menu_lists_match(monkeypatch, capsys):
+    feed(monkeypatch, "quit")
+    cli.main()
+    assert "match" in capsys.readouterr().out
+
+
+def test_match_without_engine_prints_error(monkeypatch, capsys):
+    def no_engine(**kwargs):
+        raise FileNotFoundError("No external engine found.")
+
+    monkeypatch.setattr(cli, "ExternalEngine", no_engine)
+    feed(monkeypatch, "w", "1", "")
+    cli.match()
+    assert "No external engine found." in capsys.readouterr().out
+
+
+def test_match_plays_game_and_prints_result(monkeypatch, capsys):
+    games = []
+
+    def fake_game(external, color, depth, on_move=None):
+        board = chess.Board()
+        for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
+            board.push_uci(uci)
+            on_move(board, board.peek())
+        games.append((color, depth))
+        return board
+
+    FakeExternal.closed = False
+    monkeypatch.setattr(cli, "ExternalEngine", FakeExternal)
+    monkeypatch.setattr(cli, "play_match_game", fake_game)
+    feed(monkeypatch, "b", "2", "1500")
+    cli.match()
+    out = capsys.readouterr().out
+    assert games == [(chess.BLACK, 2)]
+    assert "Fake (white) vs ChessCore (black)" in out
+    assert "2. g4" in out and "Qh4#" in out
+    assert out.rstrip().endswith("Fake vs ChessCore: 0-1")
+    assert FakeExternal.closed
+
+
+@pytest.mark.parametrize("lines,elo", [
+    ([""], None),
+    (["1500"], 1500),
+    (["strong", "-5", "2000"], 2000),
+])
+def test_ask_elo(monkeypatch, lines, elo):
+    feed(monkeypatch, *lines)
+    assert cli.ask_elo() == elo
