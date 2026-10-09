@@ -77,12 +77,14 @@ class ExternalEngine:
         self.move_time = move_time
         self.process = chess.engine.SimpleEngine.popen_uci(path)
         self.name = self.process.id.get("name", os.path.basename(path))
+        self.elo = None  # rating actually in use, after clamping; None = full strength
         if elo is not None:
             # Weaken the engine to a target rating so games are not all lost.
             # The engine refuses values outside its own range (Stockfish: 1320-3190).
             option = self.process.options["UCI_Elo"]
             elo = max(option.min, min(option.max, elo))
             self.process.configure({"UCI_LimitStrength": True, "UCI_Elo": elo})
+            self.elo = elo
             self.name += f" ({elo})"
 
     def play(self, board):

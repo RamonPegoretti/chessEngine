@@ -87,6 +87,12 @@ class Storage:
         save_json(self.games_path, games)
         return game
 
+    def update_game(self, game):
+        """Save changes to a game already added with add_game."""
+        games = self.games()
+        games[game["id"] - 1] = game
+        save_json(self.games_path, games)
+
     def stats(self):
         """{version number as text: {"games", "wins", "draws", "losses", "rating"}}"""
         return load_json(self.stats_path, {})

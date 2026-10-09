@@ -157,6 +157,7 @@ def play_training_game(storage, external, opponent_rating, chesscore_color, dept
     })
     if game["id"] % PGN_EVERY == 1:
         game["pgn"] = storage.save_pgn(game, board)
+        storage.update_game(game)
 
     score = chesscore_score(result, chesscore_color)
     stats = storage.version_stats(version)
