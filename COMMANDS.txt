@@ -31,6 +31,10 @@ python -m pip install -r requirements.txt
 ---------------
 python -m chesscore
 
+If the pieces show up as boxes, use letters instead:
+python -m chesscore --letters
+(or open the project in Windows Terminal, which shows the symbols)
+
 
 4b) STOCKFISH, for the "match" mode (first time only)
 ---------------------------------------------------

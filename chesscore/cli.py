@@ -1,5 +1,7 @@
 """Terminal interface: main menu and Human vs Engine mode (REQ-003)."""
 
+import sys
+
 import chess
 
 from chesscore import VERSION
@@ -17,12 +19,26 @@ MENU = [
 
 FILES = "  a b c d e f g h"
 
+# Draw pieces as chess symbols (True) or letters (False). Changed by
+# running "python -m chesscore --letters", for terminals that show the
+# symbols as boxes (e.g. the old cmd window).
+USE_SYMBOLS = True
+
 MOVES_PER_COLUMN = 25
 HISTORY_COLUMN_WIDTH = 22
 
 
-def render_board(board, flipped=False):
-    """Board as text lines, uppercase for White and lowercase for Black."""
+def piece_text(piece, symbols):
+    """One character for a piece: a chess symbol, or a letter (uppercase White)."""
+    if not symbols:
+        return piece.symbol()
+    # Terminals usually have a dark background, where the filled symbols
+    # look light, so White gets the filled ones.
+    return piece.unicode_symbol(invert_color=True)
+
+
+def render_board(board, flipped=False, symbols=False):
+    """Board as text lines, with letters (uppercase White) or chess symbols."""
     ranks = range(8) if flipped else range(7, -1, -1)
     files = range(7, -1, -1) if flipped else range(8)
     header = "  " + " ".join(chess.FILE_NAMES[f] for f in files)
@@ -31,7 +47,7 @@ def render_board(board, flipped=False):
         cells = []
         for file in files:
             piece = board.piece_at(chess.square(file, rank))
-            cells.append(piece.symbol() if piece else ".")
+            cells.append(piece_text(piece, symbols) if piece else ".")
         lines.append(f"{rank + 1} " + " ".join(cells))
     lines.append(header)
     return lines
@@ -67,8 +83,8 @@ def format_score(score):
     return f"{score / 100:+.1f}"
 
 
-def render_screen(board, sans, flipped, last_score, depth):
-    left = render_board(board, flipped)
+def render_screen(board, sans, flipped, last_score, depth, symbols=False):
+    left = render_board(board, flipped, symbols)
     right = render_history(sans)
     height = max(len(left), len(right))
     left += [""] * (height - len(left))
@@ -139,7 +155,8 @@ def play():
 
     while not board.is_game_over():
         print()
-        print(render_screen(board, sans, human == chess.BLACK, last_score, depth))
+        print(render_screen(board, sans, human == chess.BLACK, last_score, depth,
+                            USE_SYMBOLS))
         if board.turn == human:
             text = input("your move (e.g. e2e4, 'quit' to stop) > ").strip()
             if text.lower() == "quit":
@@ -156,7 +173,8 @@ def play():
         board.push(move)
 
     print()
-    print(render_screen(board, sans, human == chess.BLACK, last_score, depth))
+    print(render_screen(board, sans, human == chess.BLACK, last_score, depth,
+                            USE_SYMBOLS))
     print(game_result_text(board))
 
 
@@ -190,7 +208,7 @@ def match():
         before.pop()
         sans.append(before.san(move))
         print()
-        print(render_screen(board, sans, False, None, depth))
+        print(render_screen(board, sans, False, None, depth, USE_SYMBOLS))
 
     with external:
         white = "ChessCore" if chesscore_color == chess.WHITE else external.name
@@ -210,7 +228,20 @@ def print_menu():
         print(f"[{i}] {name:<8} {description}")
 
 
-def main():
+def terminal_can_show_symbols():
+    """False when the output encoding has no chess symbols (e.g. cp437)."""
+    try:
+        "♔♚".encode(sys.stdout.encoding or "ascii")
+    except (UnicodeEncodeError, LookupError):
+        return False
+    return True
+
+
+def main(argv=()):
+    """Run the menu. argv: command-line options, "--letters" for letter pieces."""
+    global USE_SYMBOLS
+    USE_SYMBOLS = "--letters" not in argv and terminal_can_show_symbols()
+
     names = [name for name, _ in MENU]
     while True:
         print_menu()
