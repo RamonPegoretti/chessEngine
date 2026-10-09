@@ -35,6 +35,9 @@ If the pieces show up as boxes, use letters instead:
 python -m chesscore --letters
 (or open the project in Windows Terminal, which shows the symbols)
 
+If the board shows strange codes like [48;5;180m instead of colours:
+python -m chesscore --plain
+
 
 4b) STOCKFISH, for the "match" mode (first time only)
 ---------------------------------------------------

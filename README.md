@@ -18,9 +18,12 @@ python -m chesscore
 ```
 
 Choose `play`, pick a colour and a search depth (3 answers instantly, 4 takes about a second).
-Pieces are drawn as chess symbols. If your terminal shows them as boxes
-(the old cmd window often does), start with `python -m chesscore --letters`
-to use letters instead (uppercase White, lowercase Black).
+The board has coloured light and dark squares, the last move highlighted,
+and pieces drawn as chess symbols (white or black by colour). Options:
+
+- `python -m chesscore --letters`: letters instead of symbols, if your
+  terminal shows the symbols as boxes (the old cmd window often does)
+- `python -m chesscore --plain`: no colours, if the squares look wrong
 Type moves as coordinates (`e2e4`, `e7e8q`) or in SAN (`Nf3`).
 
 ## Stockfish (external engine)
