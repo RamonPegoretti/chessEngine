@@ -29,11 +29,13 @@ Type moves as coordinates (`e2e4`, `e7e8q`) or in SAN (`Nf3`).
 ## Stockfish (external engine)
 
 The `match` mode plays ChessCore against an external UCI engine.
-Download Stockfish from https://stockfishchess.org/download/ and either put
-it on the PATH as `stockfish`, or point `CHESSCORE_ENGINE` at the executable:
+On Windows, Stockfish 18 is bundled in `engines/` (see `engines/README.md`)
+and unpacked automatically on first use. Elsewhere, install Stockfish and put
+it on the PATH as `stockfish`. To use another engine, point
+`CHESSCORE_ENGINE` at its executable:
 
 ```
-set CHESSCORE_ENGINE=C:\path\to\stockfish.exe
+set CHESSCORE_ENGINE=C:\path\to\engine.exe
 ```
 
 ## Tests
