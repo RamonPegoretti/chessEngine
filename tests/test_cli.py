@@ -276,3 +276,64 @@ def test_match_plays_game_and_prints_result(monkeypatch, capsys):
 def test_ask_elo(monkeypatch, lines, elo):
     feed(monkeypatch, *lines)
     assert cli.ask_elo() == elo
+
+
+# --- Train and stats ----------------------------------------------------------
+# conftest.py points cli.Storage at an empty temporary data folder.
+
+
+def test_ask_number(monkeypatch):
+    feed(monkeypatch, "")
+    assert cli.ask_number("games", 10) == 10
+    feed(monkeypatch, "x", "0", "3")
+    assert cli.ask_number("games", 10) == 3
+
+
+def test_train_without_engine_prints_error(monkeypatch, capsys):
+    def no_engine(**kwargs):
+        raise FileNotFoundError("No external engine found.")
+
+    monkeypatch.setattr(cli, "ExternalEngine", no_engine)
+    feed(monkeypatch, "2", "1", "1500")
+    cli.train()
+    assert "No external engine found." in capsys.readouterr().out
+
+
+def test_train_plays_games_and_reports(monkeypatch, capsys):
+    from chesscore import train as train_module
+    monkeypatch.setattr(train_module, "MAX_MOVES", 2)
+    FakeExternal.closed = False
+    monkeypatch.setattr(cli, "ExternalEngine", FakeExternal)
+    feed(monkeypatch, "2", "1", "1500")
+    cli.train()
+    out = capsys.readouterr().out
+    assert "Training ChessCore v1 against Fake: 2 games at depth 1" in out
+    assert "game 1/2: ChessCore v1 vs Fake 1/2-1/2, draw" in out
+    assert "(saved as PGN)" in out
+    assert "Results: 0 won, 2 drawn, 0 lost." in out
+    assert "tuning starts at" in out
+    assert FakeExternal.closed
+
+
+def test_stats_without_games(capsys):
+    cli.stats()
+    assert "No training games yet." in capsys.readouterr().out
+
+
+def test_stats_after_training(monkeypatch, capsys):
+    storage = cli.Storage()
+    storage.save_version_stats(1, {"games": 4, "wins": 1, "draws": 2, "losses": 1,
+                                   "rating": 1203.4})
+    cli.stats()
+    out = capsys.readouterr().out
+    assert out.splitlines()[1].split() == ["v1", "4", "1", "2", "1", "1203"]
+    assert "Current version: v1 (default weights)" in out
+
+
+def test_main_loads_current_version_weights(monkeypatch):
+    from chesscore import engine
+    tuned = {**engine.DEFAULT_WEIGHTS, "rook": 520}
+    cli.Storage().add_version(tuned)
+    feed(monkeypatch, "quit")
+    cli.main()
+    assert engine.get_weights() == tuned

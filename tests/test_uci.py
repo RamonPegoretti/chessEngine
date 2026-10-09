@@ -49,6 +49,39 @@ def test_engine_path_none_when_nothing_installed(monkeypatch):
     assert uci.find_engine_path() is None
 
 
+def test_bundled_engine_used_on_windows(monkeypatch):
+    monkeypatch.delenv(uci.ENGINE_PATH_VARIABLE, raising=False)
+    monkeypatch.setattr(uci.os, "name", "nt")
+    monkeypatch.setattr(uci, "bundled_engine_path", lambda: "C:/engines/stockfish.exe")
+    assert uci.find_engine_path() == "C:/engines/stockfish.exe"
+    monkeypatch.setenv(uci.ENGINE_PATH_VARIABLE, "/opt/engines/sf")
+    assert uci.find_engine_path() == "/opt/engines/sf"
+
+
+def test_bundled_engine_existing_exe_returned(tmp_path):
+    exe = tmp_path / "stockfish" / uci.BUNDLED_EXE
+    exe.parent.mkdir()
+    exe.write_bytes(b"")
+    assert uci.bundled_engine_path(str(tmp_path)) == str(exe)
+
+
+def test_bundled_engine_unzipped_on_first_use(tmp_path, capsys):
+    import zipfile
+    with zipfile.ZipFile(tmp_path / uci.BUNDLED_ZIP, "w") as z:
+        z.writestr(uci.BUNDLED_EXE, b"fake engine")
+    path = uci.bundled_engine_path(str(tmp_path))
+    assert path == str(tmp_path / "stockfish" / uci.BUNDLED_EXE)
+    assert open(path, "rb").read() == b"fake engine"
+    assert "Unpacking Stockfish" in capsys.readouterr().out
+    # Second call finds the exe without unpacking again.
+    assert uci.bundled_engine_path(str(tmp_path)) == path
+    assert capsys.readouterr().out == ""
+
+
+def test_bundled_engine_missing_zip(tmp_path):
+    assert uci.bundled_engine_path(str(tmp_path)) is None
+
+
 def test_external_engine_without_engine_raises(monkeypatch):
     monkeypatch.setattr(uci, "find_engine_path", lambda: None)
     with pytest.raises(FileNotFoundError):
