@@ -19,6 +19,7 @@ up and down a step, keeping every change that lowers the error, until no
 step helps.
 """
 
+
 import random
 
 import chess
