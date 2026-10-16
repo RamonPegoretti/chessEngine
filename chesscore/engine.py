@@ -8,6 +8,7 @@ White, negative is good for Black. White is the maximizing player and Black
 the minimizing player.
 """
 
+
 import chess
 
 DEFAULT_DEPTH = 3
