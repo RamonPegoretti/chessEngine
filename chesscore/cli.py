@@ -1,5 +1,6 @@
 """Terminal interface: main menu and Human vs Engine mode (REQ-003)."""
 
+
 import os
 import re
 import sys
