@@ -11,6 +11,7 @@ Everything lives in the data/ folder, one JSON file per category:
 About one game in ten is also saved as a .pgn file in data/pgn/.
 """
 
+
 import datetime
 import json
 import os
