@@ -28,6 +28,13 @@ PIECE_VALUES = {
 # written. Training (chesscore/train.py) tunes this and the piece values.
 POSITION_WEIGHT = 100
 
+# Weights of the other evaluation terms, in centipawns per point (see
+# mobility(), king_safety() and undeveloped_pieces() below). Training tunes
+# these too.
+MOBILITY_WEIGHT = 3
+KING_SAFETY_WEIGHT = 10
+DEVELOPMENT_WEIGHT = 15
+
 WEIGHT_NAMES = {
     "pawn": chess.PAWN,
     "knight": chess.KNIGHT,
@@ -41,15 +48,31 @@ def get_weights():
     """The evaluation weights currently in use, as a plain dict."""
     weights = {name: PIECE_VALUES[piece] for name, piece in WEIGHT_NAMES.items()}
     weights["position"] = POSITION_WEIGHT
+    weights["mobility"] = MOBILITY_WEIGHT
+    weights["king_safety"] = KING_SAFETY_WEIGHT
+    weights["development"] = DEVELOPMENT_WEIGHT
     return weights
 
 
 def set_weights(weights):
-    """Make the engine evaluate with these weights (as from get_weights)."""
-    global POSITION_WEIGHT
+    """Make the engine evaluate with these weights (as from get_weights).
+
+    A weight that is missing (an engine version saved before that term
+    existed) gets its default value.
+    """
+    global POSITION_WEIGHT, MOBILITY_WEIGHT, KING_SAFETY_WEIGHT, DEVELOPMENT_WEIGHT
+    weights = with_defaults(weights)
     for name, piece in WEIGHT_NAMES.items():
         PIECE_VALUES[piece] = int(weights[name])
     POSITION_WEIGHT = int(weights["position"])
+    MOBILITY_WEIGHT = int(weights["mobility"])
+    KING_SAFETY_WEIGHT = int(weights["king_safety"])
+    DEVELOPMENT_WEIGHT = int(weights["development"])
+
+
+def with_defaults(weights):
+    """A copy of `weights` with every missing weight set to its default."""
+    return {**DEFAULT_WEIGHTS, **weights}
 
 
 DEFAULT_WEIGHTS = get_weights()
@@ -134,8 +157,25 @@ PIECE_SQUARE_TABLES = {
 }
 
 
+# Squares where the knights and bishops start. A piece still standing there
+# has not been developed.
+MINOR_PIECE_HOMES = {
+    chess.WHITE: [chess.B1, chess.G1, chess.C1, chess.F1],
+    chess.BLACK: [chess.B8, chess.G8, chess.C8, chess.F8],
+}
+
+
 def evaluate(board):
-    """Static evaluation of a position, in centipawns from White's view."""
+    """Static evaluation of a position, in centipawns from White's view.
+
+    It adds up, for White minus Black:
+    - material: the value of every piece;
+    - position: a bonus or malus for the square each piece stands on;
+    - mobility: how many squares the pieces can move to;
+    - king safety: pawns sheltering the king, minus squares around it that
+      the opponent attacks;
+    - development: a malus for each knight or bishop still at home.
+    """
     score = 0
     for square, piece in board.piece_map().items():
         table = PIECE_SQUARE_TABLES[piece.piece_type]
@@ -145,7 +185,66 @@ def evaluate(board):
         else:
             bonus = table[square] * POSITION_WEIGHT // 100
             score -= PIECE_VALUES[piece.piece_type] + bonus
+
+    score += MOBILITY_WEIGHT * (mobility(board, chess.WHITE) - mobility(board, chess.BLACK))
+    score += KING_SAFETY_WEIGHT * (king_safety(board, chess.WHITE)
+                                   - king_safety(board, chess.BLACK))
+    score -= DEVELOPMENT_WEIGHT * (undeveloped_pieces(board, chess.WHITE)
+                                   - undeveloped_pieces(board, chess.BLACK))
     return score
+
+
+def mobility(board, color):
+    """Number of squares the knights, bishops, rooks and queens of `color`
+    attack, not counting squares taken by their own pieces.
+
+    A piece with more squares has more options, so it is usually worth more.
+    Attacked squares are used instead of legal moves so the count is the same
+    whichever side is to move.
+    """
+    own = board.occupied_co[color]
+    count = 0
+    for piece_type in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN):
+        for square in board.pieces(piece_type, color):
+            count += chess.popcount(board.attacks_mask(square) & ~own)
+    return count
+
+
+def king_safety(board, color):
+    """Pawns in front of the king of `color`, minus the squares next to the
+    king that the opponent attacks.
+
+    Only counts while the opponent has a queen: without one, an attack on the
+    king is rarely dangerous and the king should come out and fight.
+    """
+    king = board.king(color)
+    if king is None or not board.pieces(chess.QUEEN, not color):
+        return 0
+
+    forward = 1 if color == chess.WHITE else -1
+    shield = 0
+    for file in range(chess.square_file(king) - 1, chess.square_file(king) + 2):
+        for distance in (1, 2):
+            rank = chess.square_rank(king) + forward * distance
+            if 0 <= file <= 7 and 0 <= rank <= 7:
+                piece = board.piece_at(chess.square(file, rank))
+                if piece == chess.Piece(chess.PAWN, color):
+                    shield += 1
+
+    attacked = sum(1 for square in board.attacks(king)
+                   if board.is_attacked_by(not color, square))
+    return shield - attacked
+
+
+def undeveloped_pieces(board, color):
+    """Number of knights and bishops of `color` still on their starting squares."""
+    count = 0
+    for square in MINOR_PIECE_HOMES[color]:
+        piece = board.piece_at(square)
+        if (piece and piece.color == color
+                and piece.piece_type in (chess.KNIGHT, chess.BISHOP)):
+            count += 1
+    return count
 
 
 def terminal_score(board, depth):

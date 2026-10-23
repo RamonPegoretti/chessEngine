@@ -19,7 +19,7 @@ import os
 import chess
 import chess.pgn
 
-from chesscore.engine import DEFAULT_WEIGHTS
+from chesscore.engine import DEFAULT_WEIGHTS, with_defaults
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "data")
@@ -57,8 +57,14 @@ class Storage:
     # --- Versions (REQ-011) ---------------------------------------------------
 
     def versions(self):
-        """All engine versions, oldest first. Version 1 is the default weights."""
+        """All engine versions, oldest first. Version 1 is the default weights.
+
+        A version saved before an evaluation term existed gets that term's
+        default weight.
+        """
         versions = load_json(self.versions_path, [])
+        for version in versions:
+            version["weights"] = with_defaults(version["weights"])
         if not versions:
             # Not saved until a second version is added.
             versions = [{"version": 1, "date": today(), "weights": dict(DEFAULT_WEIGHTS),

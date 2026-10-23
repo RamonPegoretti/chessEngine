@@ -343,9 +343,9 @@ def train():
           f"(error {summary['error_before']:.4f} -> {summary['error_after']:.4f}).")
     print(f"New engine version v{new['version']}:")
     for name, value in new["weights"].items():
-        old = summary["old_weights"][name]
+        old = summary["old_weights"].get(name, value)
         change = f"  ({value - old:+d})" if value != old else ""
-        print(f"  {name:<9}{value}{change}")
+        print(f"  {name:<13}{value}{change}")
 
 
 def stats():
