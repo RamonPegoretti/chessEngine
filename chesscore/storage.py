@@ -7,6 +7,8 @@ Everything lives in the data/ folder, one JSON file per category:
                  colour, result, moves in UCI notation)
 - stats.json:    results and estimated rating per engine version
 - versions.json: every engine version and its evaluation weights
+- positions.json: positions from Stockfish playing itself, with Stockfish's
+                 evaluation, used to tune the weights
 
 About one game in ten is also saved as a .pgn file in data/pgn/.
 """
@@ -52,6 +54,7 @@ class Storage:
         self.games_path = os.path.join(data_dir, "games.json")
         self.stats_path = os.path.join(data_dir, "stats.json")
         self.versions_path = os.path.join(data_dir, "versions.json")
+        self.positions_path = os.path.join(data_dir, "positions.json")
         self.pgn_dir = os.path.join(data_dir, "pgn")
 
     # --- Versions (REQ-011) ---------------------------------------------------
@@ -119,6 +122,16 @@ class Storage:
         stats = self.stats()
         stats[str(version)] = version_stats
         save_json(self.stats_path, stats)
+
+    # --- Reference positions ---------------------------------------------------
+
+    def positions(self):
+        """[{"fen", "eval"}]: positions with Stockfish's evaluation (centipawns,
+        White's view)."""
+        return load_json(self.positions_path, [])
+
+    def add_positions(self, positions):
+        save_json(self.positions_path, self.positions() + list(positions))
 
     # --- PGN (REQ-009) --------------------------------------------------------
 
