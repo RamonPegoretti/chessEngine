@@ -3,6 +3,7 @@ ChessCore - commands to get the project from GitHub and run it
 Windows command prompt (cmd). Requires Git and Python installed.
 
 
+
 1) FIRST TIME: download the project
 -----------------------------------
 cd C:\DatiAllievo
