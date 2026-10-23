@@ -56,21 +56,27 @@ the search alone cannot reach within its depth.
 
 ## Training
 
-`train` plays a number of games against Stockfish (alternating colours) and
-then tunes the evaluation weights from the results (Texel tuning: piece
-values and the weights of the other terms above). Each tuning that fits the
-results better is saved as a new engine version, and `play`, `match` and
-`train` always use the latest one. `stats` shows the results and estimated
-rating of every version.
+`train` plays a number of games against Stockfish (alternating colours) to
+measure ChessCore's estimated rating. Then Stockfish plays the same number of
+games against itself and evaluates their positions, and the evaluation
+weights (piece values and the other terms above) are tuned to agree with
+Stockfish's evaluations (Texel tuning). Each tuning that fits better is saved
+as a new engine version, and `play`, `match` and `train` always use the
+latest one. `stats` shows the results and estimated rating of every version.
+
+The weights are not tuned on ChessCore's own games: ChessCore loses almost
+all of them, so whatever it does (developing its pieces, sheltering its
+king) would look like a losing habit and its weight would drop to 0.
 
 Training data goes in `data/`:
 
 - `games.json`: every training game with its moves and result
 - `stats.json`: wins, draws, losses and estimated Elo per engine version
 - `versions.json`: the weights of every engine version
+- `positions.json`: positions from Stockfish's games against itself, with its evaluation
 - `pgn/`: about one game in ten as a PGN file
 
-Tuning waits until about 1000 positions (around 20 games) have been
+Tuning waits until about 1000 positions (around 12 games) have been
 collected, and each session changes the weights only a little.
 
 ## Tests
