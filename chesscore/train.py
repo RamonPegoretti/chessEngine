@@ -37,13 +37,16 @@ MAX_POSITIONS = 5000
 
 # Size of one tuning step for each weight. The pawn is not tuned: it stays at
 # 100 so the other values keep meaning "centipawns".
-TUNING_STEPS = {"knight": 10, "bishop": 10, "rook": 10, "queen": 20, "position": 10}
+TUNING_STEPS = {"knight": 10, "bishop": 10, "rook": 10, "queen": 20, "position": 10,
+                "mobility": 1, "king_safety": 5, "development": 5}
 
 # Guards against over-fitting a few games: each session moves a weight by at
-# most MAX_TUNING_ROUNDS steps, weights stay within 20% of the defaults, and
-# there is no tuning until enough positions have been collected.
+# most MAX_TUNING_ROUNDS steps, piece values and the position weight stay
+# within 20% of the defaults, the other terms within TERM_LIMITS, and there is
+# no tuning until enough positions have been collected.
 MAX_TUNING_ROUNDS = 3
 MAX_DRIFT = 0.20
+TERM_LIMITS = {"mobility": (0, 10), "king_safety": (0, 30), "development": (0, 40)}
 MIN_POSITIONS = 1000
 
 RESULT_FOR_WHITE = {"1-0": 1.0, "0-1": 0.0, "1/2-1/2": 0.5}
@@ -106,18 +109,26 @@ def tuning_error(positions, weights):
 
 
 def weights_are_valid(weights):
-    """Keep the values sensible: pawn < knight <= bishop < rook < queen, and
-    every weight within MAX_DRIFT of its default."""
+    """Keep the values sensible: pawn < knight <= bishop < rook < queen,
+    the terms in TERM_LIMITS within their range, and every other weight within
+    MAX_DRIFT of its default."""
+    weights = engine.with_defaults(weights)
     if not (weights["pawn"] < weights["knight"] <= weights["bishop"]
             < weights["rook"] < weights["queen"]):
         return False
-    return all(abs(weights[name] - default) <= MAX_DRIFT * default
-               for name, default in engine.DEFAULT_WEIGHTS.items())
+    for name, default in engine.DEFAULT_WEIGHTS.items():
+        if name in TERM_LIMITS:
+            low, high = TERM_LIMITS[name]
+            if not low <= weights[name] <= high:
+                return False
+        elif abs(weights[name] - default) > MAX_DRIFT * default:
+            return False
+    return True
 
 
 def tune_weights(positions, weights, max_rounds=MAX_TUNING_ROUNDS):
     """Improve `weights` on `positions`. Returns (weights, error before, after)."""
-    best = dict(weights)
+    best = engine.with_defaults(weights)
     best_error = start_error = tuning_error(positions, best)
     for _ in range(max_rounds):
         improved = False

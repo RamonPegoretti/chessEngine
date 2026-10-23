@@ -35,7 +35,8 @@ def quick_games(monkeypatch, max_moves=3):
 
 def test_default_weights():
     assert DEFAULT_WEIGHTS == {"pawn": 100, "knight": 320, "bishop": 330,
-                               "rook": 500, "queen": 900, "position": 100}
+                               "rook": 500, "queen": 900, "position": 100,
+                               "mobility": 3, "king_safety": 10, "development": 15}
     assert engine.get_weights() == DEFAULT_WEIGHTS
 
 
@@ -48,7 +49,7 @@ def test_set_weights_changes_evaluation():
 
 
 def test_position_weight_zero_counts_material_only():
-    engine.set_weights({**DEFAULT_WEIGHTS, "position": 0})
+    engine.set_weights({**DEFAULT_WEIGHTS, "position": 0, "mobility": 0})
     board = chess.Board("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1")
     assert engine.evaluate(board) == DEFAULT_WEIGHTS["knight"]
 

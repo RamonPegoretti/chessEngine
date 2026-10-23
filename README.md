@@ -38,11 +38,27 @@ it on the PATH as `stockfish`. To use another engine, point
 set CHESSCORE_ENGINE=C:\path\to\engine.exe
 ```
 
+## Evaluation
+
+The engine scores a position (in centipawns, White minus Black) by adding:
+
+| term | what it counts | default weight |
+|---|---|---|
+| material | value of every piece (pawn 100, knight 320, bishop 330, rook 500, queen 900) | - |
+| position | bonus or malus for the square each piece stands on (piece-square tables) | 100% |
+| mobility | squares the knights, bishops, rooks and queens can move to | 3 per square |
+| king safety | pawns in front of the king, minus squares next to it the opponent attacks (only while the opponent has a queen) | 10 per point |
+| development | knights and bishops still on their starting squares (a malus) | 15 per piece |
+
+Mobility, king safety and development let the engine see some compensation
+for material, such as a lead in development or an exposed enemy king, that
+the search alone cannot reach within its depth.
+
 ## Training
 
 `train` plays a number of games against Stockfish (alternating colours) and
 then tunes the evaluation weights from the results (Texel tuning: piece
-values and how much the piece-square tables count). Each tuning that fits the
+values and the weights of the other terms above). Each tuning that fits the
 results better is saved as a new engine version, and `play`, `match` and
 `train` always use the latest one. `stats` shows the results and estimated
 rating of every version.
