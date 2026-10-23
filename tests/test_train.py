@@ -276,3 +276,35 @@ def test_train_uses_current_version_weights(storage, monkeypatch):
     train.train(storage, FakeExternal(), 1400, games=1, depth=1)
     assert engine.get_weights() == tuned
     assert storage.games()[0]["white"] == "ChessCore v2"
+
+
+# --- New evaluation terms -----------------------------------------------------
+
+
+@pytest.mark.parametrize("term", ["mobility", "king_safety", "development"])
+def test_new_terms_are_tuned(term):
+    assert train.TUNING_STEPS[term] > 0
+    low, high = train.TERM_LIMITS[term]
+    assert low <= DEFAULT_WEIGHTS[term] <= high
+
+
+@pytest.mark.parametrize("change,valid", [
+    ({"mobility": 0}, True),
+    ({"mobility": 10}, True),
+    ({"mobility": 11}, False),
+    ({"mobility": -1}, False),
+    ({"king_safety": 30}, True),
+    ({"king_safety": 31}, False),
+    ({"development": 40}, True),
+    ({"development": 41}, False),
+])
+def test_term_limits(change, valid):
+    assert train.weights_are_valid({**DEFAULT_WEIGHTS, **change}) is valid
+
+
+def test_old_six_key_weights_are_valid_and_tunable():
+    old = {name: DEFAULT_WEIGHTS[name]
+           for name in ("pawn", "knight", "bishop", "rook", "queen", "position")}
+    assert train.weights_are_valid(old)
+    weights, _, _ = train.tune_weights([(chess.Board(), 0.5)], old, max_rounds=1)
+    assert set(weights) == set(DEFAULT_WEIGHTS)

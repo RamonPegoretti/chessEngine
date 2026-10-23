@@ -126,3 +126,16 @@ def test_save_pgn_writes_readable_game(storage):
 def test_today_is_iso_date():
     text = storage_module.today()
     assert len(text) == 10 and text[4] == text[7] == "-"
+
+
+def test_old_versions_get_new_weights_filled_in(storage):
+    old_weights = {"pawn": 100, "knight": 330, "bishop": 330, "rook": 500,
+                   "queen": 900, "position": 90}
+    save_json(storage.versions_path, [
+        {"version": 1, "date": "2026-10-09", "weights": dict(DEFAULT_WEIGHTS), "note": ""},
+        {"version": 2, "date": "2026-10-10", "weights": old_weights, "note": "tuned"},
+    ])
+    current = storage.current_version()["weights"]
+    assert current == {**DEFAULT_WEIGHTS, "knight": 330, "position": 90}
+    # Reading does not rewrite the file.
+    assert load_json(storage.versions_path, None)[1]["weights"] == old_weights
