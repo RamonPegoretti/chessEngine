@@ -325,15 +325,21 @@ def train():
         print(f"game {number}/{games}: {game['white']} vs {game['black']} "
               f"{game['result']}, {outcome}, rating {stats['rating']:.0f}{saved}")
 
-    with external:
-        summary = run_training(storage, external, external.elo, games, depth, on_game=show)
+    def grading(number):
+        if number == 1:
+            print(f"Stockfish is playing {games} games against itself and grading "
+                  "the positions...")
+
+    with external, ExternalEngine() as analyser:
+        summary = run_training(storage, external, external.elo, games, depth,
+                               on_game=show, analyser=analyser, on_grading=grading)
 
     print()
     print(f"Results: {summary['wins']} won, {summary['draws']} drawn, "
           f"{summary['losses']} lost. Estimated rating {summary['rating']:.0f}.")
     if summary["error_before"] is None:
         print(f"Collected {summary['positions']} positions so far; tuning starts "
-              f"at {MIN_POSITIONS} (about {MIN_POSITIONS // 50} games).")
+              f"at {MIN_POSITIONS} (about {MIN_POSITIONS // 80} games).")
         return
     if summary["new_version"] is None:
         print("Tuning found no better weights; the engine version stays the same.")

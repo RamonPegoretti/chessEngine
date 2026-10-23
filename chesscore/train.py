@@ -7,16 +7,25 @@ A training session:
    colours, with the current engine version;
 2. records every game in data/games.json, saves about one in ten as PGN and
    updates the version's results and estimated rating (Elo formula);
-3. tunes the evaluation weights (piece values and how much the
-   piece-square tables count) on the positions of all recorded games, and
-   saves the result as a new engine version if it fits the results better.
+3. has Stockfish play as many games against itself and evaluate their
+   positions (saved in data/positions.json);
+4. tunes the evaluation weights on those positions, and saves the result as
+   a new engine version if it fits them better.
 
-The tuning is "Texel tuning". For every position the evaluation is turned
-into an expected result with a logistic curve (+400 centipawns ~ 91% to
-win). The error is the mean squared difference between that and how the
-game really ended (1 White won, 0.5 draw, 0 Black won). Each weight is moved
-up and down a step, keeping every change that lowers the error, until no
-step helps.
+The tuning is "Texel tuning". For every position ChessCore's evaluation is
+turned into an expected result with a logistic curve (+400 centipawns ~ 91%
+to win), and so is Stockfish's evaluation. The error is the mean squared
+difference between the two. Each weight is moved up and down a step,
+keeping every change that lowers the error, until no step helps.
+
+Why Stockfish's own games and not ChessCore's: ChessCore loses almost every
+game against Stockfish, and it is ChessCore's own evaluation that makes it
+develop its pieces and shelter its king. Tuned on those positions, even
+graded by Stockfish, "developed, with a safe king" looks like "the side that
+is losing", and those weights fall to 0. Positions from Stockfish playing
+itself do not have that bias. ChessCore's games still measure its rating.
+Without Stockfish to grade (the tests), ChessCore's games and their results
+are used.
 """
 
 
@@ -34,6 +43,8 @@ PGN_EVERY = 10        # save game 1, 11, 21, ... as PGN (about 10%)
 MAX_MOVES = 150       # a game still going after this many moves is a draw
 SKIP_OPENING_PLIES = 8
 MAX_POSITIONS = 5000
+EVAL_DEPTH = 8        # search depth Stockfish uses to grade a position
+REFERENCE_OPENING_PLIES = 4  # random moves before a Stockfish self-play game
 
 # Size of one tuning step for each weight. The pawn is not tuned: it stays at
 # 100 so the other values keep meaning "centipawns".
@@ -77,22 +88,52 @@ def win_probability(score):
     return 1 / (1 + 10 ** (-score / 400))
 
 
-def training_positions(games, max_positions=MAX_POSITIONS, rng=random):
-    """(board, result for White) pairs from recorded games.
+def used_for_tuning(board):
+    """True if a position (after a move) is used for tuning. The opening is
+    skipped (it is the same in many games) and so are positions in check,
+    where the static evaluation means little."""
+    return len(board.move_stack) > SKIP_OPENING_PLIES and not board.is_check()
 
-    The opening is skipped (it is the same in many games) and so are
-    positions in check, where the static evaluation means little.
-    """
+
+def training_positions(games, max_positions=MAX_POSITIONS, rng=random):
+    """(board, result for White) pairs from recorded games."""
     positions = []
     for game in games:
         result = RESULT_FOR_WHITE[game["result"]]
         board = chess.Board()
-        for ply, uci in enumerate(game["moves"]):
+        for uci in game["moves"]:
             board.push_uci(uci)
-            if ply >= SKIP_OPENING_PLIES and not board.is_check():
+            if used_for_tuning(board):
                 positions.append((board.copy(stack=False), result))
+    return sample(positions, max_positions, rng)
+
+
+def reference_positions(stored, max_positions=MAX_POSITIONS, rng=random):
+    """(board, expected result for White) pairs from positions Stockfish
+    evaluated (Storage.positions())."""
+    positions = [(chess.Board(position["fen"]), win_probability(position["eval"]))
+                 for position in stored]
+    return sample(positions, max_positions, rng)
+
+
+def sample(positions, max_positions, rng):
     if len(positions) > max_positions:
         positions = rng.sample(positions, max_positions)
+    return positions
+
+
+def reference_game(player, analyser, rng=random):
+    """Play one game of Stockfish against itself, after a few random moves so
+    every game is different. Returns [{"fen", "eval"}] for its used positions."""
+    board = chess.Board()
+    for _ in range(REFERENCE_OPENING_PLIES):
+        board.push(rng.choice(list(board.legal_moves)))
+    positions = []
+    while not board.is_game_over() and board.fullmove_number <= MAX_MOVES:
+        board.push(player.play(board))
+        if used_for_tuning(board):
+            positions.append({"fen": board.fen(),
+                              "eval": analyser.evaluate(board, depth=EVAL_DEPTH)})
     return positions
 
 
@@ -181,10 +222,14 @@ def play_training_game(storage, external, opponent_rating, chesscore_color, dept
 
 
 def train(storage, external, opponent_rating, games=10, depth=DEFAULT_DEPTH,
-          on_game=None, rng=random):
+          on_game=None, rng=random, analyser=None, on_grading=None):
     """Run a training session. Returns a summary dict.
 
-    on_game(number, game, score, stats), if given, is called after each game.
+    analyser is a full-strength engine that evaluates the positions of the
+    self-play games; without it the weights are tuned on ChessCore's games
+    and their results.
+    on_game(number, game, score, stats), if given, is called after each game,
+    and on_grading(number), if given, before each Stockfish self-play game.
     """
     version = storage.current_version()
     engine.set_weights(version["weights"])
@@ -198,7 +243,14 @@ def train(storage, external, opponent_rating, games=10, depth=DEFAULT_DEPTH,
         if on_game:
             on_game(number, game, score, stats)
 
-    positions = training_positions(storage.games(), rng=rng)
+    if analyser is not None:
+        for number in range(1, games + 1):
+            if on_grading:
+                on_grading(number)
+            storage.add_positions(reference_game(external, analyser, rng))
+        positions = reference_positions(storage.positions(), rng=rng)
+    else:
+        positions = training_positions(storage.games(), rng=rng)
     new_version = None
     error_before = error_after = None
     if len(positions) >= MIN_POSITIONS:
