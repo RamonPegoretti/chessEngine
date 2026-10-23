@@ -308,3 +308,136 @@ def test_old_six_key_weights_are_valid_and_tunable():
     assert train.weights_are_valid(old)
     weights, _, _ = train.tune_weights([(chess.Board(), 0.5)], old, max_rounds=1)
     assert set(weights) == set(DEFAULT_WEIGHTS)
+
+
+# --- Stockfish self-play positions (reference tuning) -------------------------
+
+
+class FakeAnalyser:
+    """Stands in for the full-strength engine that grades positions: scores
+    every position as a 50-centipawn edge for White and records the depth."""
+
+    def __init__(self):
+        self.depths = []
+
+    def evaluate(self, board, depth=None):
+        self.depths.append(depth)
+        return 50
+
+
+def board_after(moves):
+    board = chess.Board()
+    for uci in moves:
+        board.push_uci(uci)
+    return board
+
+
+def test_used_for_tuning_skips_opening_plies():
+    knights = ["g1f3", "g8f6", "f3g1", "f6g8"] * 3
+    assert not train.used_for_tuning(board_after(knights[:train.SKIP_OPENING_PLIES]))
+    assert train.used_for_tuning(board_after(knights[:train.SKIP_OPENING_PLIES + 1]))
+
+
+def test_used_for_tuning_skips_checks():
+    moves = ["g1f3", "g8f6", "f3g1", "f6g8"] * 2 + ["e2e4", "f7f6", "d1h5"]
+    board = board_after(moves)
+    assert board.is_check() and len(board.move_stack) > train.SKIP_OPENING_PLIES
+    assert not train.used_for_tuning(board)
+
+
+def test_sample_keeps_short_lists_and_caps_long_ones():
+    assert train.sample([1, 2, 3], 5, random.Random(1)) == [1, 2, 3]
+    picked = train.sample(list(range(100)), 10, random.Random(1))
+    assert len(picked) == len(set(picked)) == 10
+    assert set(picked) <= set(range(100))
+
+
+def test_reference_positions_grade_by_win_probability():
+    stored = [{"fen": chess.STARTING_FEN, "eval": 0},
+              {"fen": "4k3/8/8/8/8/8/8/3QK3 w - - 0 1", "eval": 400},
+              {"fen": "3qk3/8/8/8/8/8/8/4K3 w - - 0 1", "eval": -400}]
+    positions = train.reference_positions(stored)
+    assert [board.fen() for board, _ in positions] == [p["fen"] for p in stored]
+    assert [target for _, target in positions] == pytest.approx([0.5, 10 / 11, 1 / 11])
+
+
+def test_reference_positions_capped():
+    stored = [{"fen": chess.STARTING_FEN, "eval": 0}] * 20
+    assert len(train.reference_positions(stored, max_positions=7, rng=random.Random(1))) == 7
+
+
+def test_reference_game_positions_and_evals(monkeypatch):
+    monkeypatch.setattr(train, "MAX_MOVES", 10)
+    analyser = FakeAnalyser()
+    positions = train.reference_game(FakeExternal(), analyser, random.Random(3))
+    assert positions
+    assert len(analyser.depths) == len(positions)
+    assert set(analyser.depths) == {train.EVAL_DEPTH}
+    for position in positions:
+        assert position["eval"] == 50
+        board = chess.Board(position["fen"])
+        assert board.is_valid() and not board.is_check()
+    # Moves after the random opening are the player's; the game stops after
+    # MAX_MOVES full moves.
+    last = chess.Board(positions[-1]["fen"])
+    assert last.fullmove_number <= train.MAX_MOVES + 1
+
+
+def test_reference_game_openings_differ_but_repeat_with_same_seed(monkeypatch):
+    monkeypatch.setattr(train, "MAX_MOVES", 6)
+
+    def fens(seed):
+        return [p["fen"] for p in train.reference_game(FakeExternal(), FakeAnalyser(),
+                                                       random.Random(seed))]
+
+    assert fens(5) == fens(5)
+    assert len({tuple(fens(seed)) for seed in range(6)}) > 1
+
+
+def test_reference_game_skips_the_opening(monkeypatch):
+    # With no move limit beyond the skipped plies, nothing is graded.
+    monkeypatch.setattr(train, "MAX_MOVES", train.SKIP_OPENING_PLIES // 2 - 1)
+    analyser = FakeAnalyser()
+    assert train.reference_game(FakeExternal(), analyser, random.Random(1)) == []
+    assert analyser.depths == []
+
+
+def test_train_with_analyser_grades_self_play_and_tunes_on_it(storage, monkeypatch):
+    quick_games(monkeypatch, max_moves=8)
+    monkeypatch.setattr(train, "MIN_POSITIONS", 1)
+    seen = []
+
+    def fake_tune(positions, weights):
+        seen.extend(positions)
+        return dict(weights), 0.2, 0.2
+
+    monkeypatch.setattr(train, "tune_weights", fake_tune)
+    grading = []
+    summary = train.train(storage, FakeExternal(), 1400, games=3, depth=1,
+                          rng=random.Random(2), analyser=FakeAnalyser(),
+                          on_grading=grading.append)
+    assert grading == [1, 2, 3]
+    stored = storage.positions()
+    assert stored and all(p["eval"] == 50 for p in stored)
+    # Tuned on the graded positions, not on ChessCore's game results.
+    assert len(seen) == len(stored) == summary["positions"]
+    assert all(target == pytest.approx(train.win_probability(50)) for _, target in seen)
+
+
+def test_train_with_analyser_keeps_earlier_positions(storage, monkeypatch):
+    quick_games(monkeypatch, max_moves=8)
+    counts = []
+    for seed in (4, 5):
+        train.train(storage, FakeExternal(), 1400, games=1, depth=1,
+                    rng=random.Random(seed), analyser=FakeAnalyser())
+        counts.append(len(storage.positions()))
+    assert 0 < counts[0] < counts[1]
+
+
+def test_train_without_analyser_stores_no_positions(storage, monkeypatch):
+    quick_games(monkeypatch, max_moves=8)
+    grading = []
+    train.train(storage, FakeExternal(), 1400, games=2, depth=1,
+                on_grading=grading.append)
+    assert storage.positions() == []
+    assert grading == []
