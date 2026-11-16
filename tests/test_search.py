@@ -46,7 +46,7 @@ SEARCH_POSITIONS = [
     # Open middlegame with tactics for both sides
     "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
     # Black to move, material imbalance
-    "r1b1k2r/ppp2ppp/2n5/3q4/1b1P4/2N2N2/PP3PPP/R1BQKB1R b KQkq - 0 8",
+    "2r1k3/pp3ppp/2n5/3q4/3P4/2N5/PP3PPP/R3K2R b KQ - 0 15",
     # Endgame with promotion races
     "8/1P6/8/8/8/8/6p1/k6K w - - 0 1",
     PERFT_POSITIONS["position3"][0],
