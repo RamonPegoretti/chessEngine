@@ -335,12 +335,13 @@ def test_negamax_raises_timeout_when_time_is_up(monkeypatch):
         negamax(chess.Board(), 3, -INF, INF)
 
 
-def test_tiny_time_limit_plays_depth_one_move(monkeypatch):
-    # Look at the clock at every position, so depth 2 cannot sneak in before
-    # the first check.
+def test_tiny_time_limit_plays_first_ordered_move(monkeypatch):
+    # Look at the clock at every position: the time is up before depth 1
+    # searched anything, so the first move in move order is played.
     monkeypatch.setattr(engine, "TIME_CHECK_INTERVAL", 1)
     board = chess.Board(SEARCH_POSITIONS[1])
-    assert find_best_move(board, depth=6, time_limit=1e-9) == find_best_move(board, depth=1)
+    move, _ = find_best_move(board, depth=6, time_limit=1e-9)
+    assert move == ordered_moves(board)[0]
 
 
 def test_time_limit_is_respected_and_move_is_legal():
@@ -358,10 +359,10 @@ def test_timed_out_search_returns_a_finished_depth(monkeypatch):
     board = chess.Board(SEARCH_POSITIONS[1])
     real = engine.search_root
 
-    def stop_at_three(board, depth, first_move=None):
+    def stop_at_three(board, depth, first_move=None, progress=None):
         if depth == 3:
             raise engine.SearchTimeout
-        return real(board, depth, first_move)
+        return real(board, depth, first_move, progress)
 
     expected = find_best_move(board, depth=2)
     monkeypatch.setattr(engine, "search_root", stop_at_three)

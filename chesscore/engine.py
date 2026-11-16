@@ -373,12 +373,14 @@ def check_time():
         raise SearchTimeout
 
 
-def search_root(board, depth, first_move=None):
+def search_root(board, depth, first_move=None, progress=None):
     """Search every move of the side to move to `depth` plies.
 
     Returns (best move, score from the side to move's view). `first_move`,
     the best move of the previous depth, is tried first: it is probably
     still good, and a good first move lets alpha-beta skip more.
+    `progress`, a dict, if given, always holds the best "move" and "score"
+    found so far, so they are not lost if the time runs out.
     """
     moves = ordered_moves(board)
     if first_move in moves:
@@ -395,6 +397,8 @@ def search_root(board, depth, first_move=None):
         if score > best_score:
             best_move, best_score = move, score
             alpha = max(alpha, score)
+            if progress is not None:
+                progress.update(move=move, score=score)
     return best_move, best_score
 
 
@@ -451,22 +455,33 @@ def find_best_move(board, depth=DEFAULT_DEPTH, time_limit=None):
 
     time_limit, in seconds, stops the search when it runs out (the "hard
     bound"), even in the middle of a depth: the best move of the last
-    finished depth is played. Depth 1 is always finished, so there is always
-    a move. None or 0 means no time limit. The score is from White's point of view, like evaluate().
+    finished depth is played. If not even depth 1 finished, the best move
+    depth 1 found so far is played, or else the first move in move order.
+    None or 0 means no time limit. The score is from White's point of view,
+    like evaluate().
     """
     global _deadline, _nodes
     if depth < 1:
         raise ValueError("depth must be at least 1")
 
-    start = time.monotonic()
+    moves = ordered_moves(board)
+    if not moves:
+        return None, -float("inf") * side_sign(board)
+    # Fallback in case the time runs out before any move is searched.
+    best_move, best_score = moves[0], evaluate(board) * side_sign(board)
+
     _nodes = 0
-    best_move, best_score = search_root(board, 1)
-    _deadline = start + time_limit if time_limit else None
+    _deadline = time.monotonic() + time_limit if time_limit else None
     try:
-        for current_depth in range(2, depth + 1):
-            best_move, best_score = search_root(board, current_depth, best_move)
-    except SearchTimeout:
-        pass
+        for current_depth in range(1, depth + 1):
+            progress = {}
+            try:
+                best_move, best_score = search_root(board, current_depth, best_move,
+                                                    progress)
+            except SearchTimeout:
+                if current_depth == 1 and progress:
+                    best_move, best_score = progress["move"], progress["score"]
+                break
     finally:
         _deadline = None
 
