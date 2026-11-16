@@ -8,6 +8,7 @@ scored and preferred correctly, depth is respected and boards are copied.
 import chess
 import pytest
 
+from chesscore import engine
 from chesscore.engine import (
     MATE_SCORE,
     evaluate,
@@ -276,3 +277,115 @@ def test_find_best_move_scores_from_whites_view_for_black():
     move, score = find_best_move(board, depth=2)
     assert move.uci() == "c3d1"
     assert score < 0
+
+
+# --- Iterative deepening and time limit ----------------------------------------
+
+
+@pytest.mark.parametrize("fen", SEARCH_POSITIONS[:3])
+@pytest.mark.parametrize("depth", [1, 2, 3])
+def test_search_root_matches_find_best_move(fen, depth):
+    board = chess.Board(fen)
+    move, score = engine.search_root(board, depth)
+    assert move in board.legal_moves
+    assert score == negamax(board, depth, -INF, INF)
+    assert find_best_move(board, depth)[1] == score * side_sign(board)
+
+
+def test_search_root_tries_first_move_first(monkeypatch):
+    board = chess.Board()
+    tried = []
+    real = engine.negamax
+
+    def recording(child, depth, alpha, beta):
+        if len(child.move_stack) == 1:
+            tried.append(child.peek().uci())
+        return real(child, depth, alpha, beta)
+
+    monkeypatch.setattr(engine, "negamax", recording)
+    engine.search_root(board, 2, first_move=chess.Move.from_uci("a2a3"))
+    assert tried[0] == "a2a3"
+    assert sorted(tried) == sorted(m.uci() for m in board.legal_moves)
+
+
+def test_search_root_ignores_illegal_first_move():
+    board = chess.Board()
+    move, _ = engine.search_root(board, 1, first_move=chess.Move.from_uci("e7e5"))
+    assert move in board.legal_moves
+
+
+def test_check_time_never_stops_without_deadline():
+    for _ in range(3 * engine.TIME_CHECK_INTERVAL):
+        engine.check_time()
+
+
+def test_check_time_stops_after_deadline(monkeypatch):
+    monkeypatch.setattr(engine, "_deadline", 0.0)  # long passed
+    monkeypatch.setattr(engine, "_nodes", 0)
+    with pytest.raises(engine.SearchTimeout):
+        for _ in range(engine.TIME_CHECK_INTERVAL):
+            engine.check_time()
+    # The clock is only looked at every TIME_CHECK_INTERVAL positions.
+    assert engine._nodes == engine.TIME_CHECK_INTERVAL
+
+
+def test_negamax_raises_timeout_when_time_is_up(monkeypatch):
+    monkeypatch.setattr(engine, "_deadline", 0.0)
+    with pytest.raises(engine.SearchTimeout):
+        negamax(chess.Board(), 3, -INF, INF)
+
+
+def test_tiny_time_limit_plays_depth_one_move(monkeypatch):
+    # Look at the clock at every position, so depth 2 cannot sneak in before
+    # the first check.
+    monkeypatch.setattr(engine, "TIME_CHECK_INTERVAL", 1)
+    board = chess.Board(SEARCH_POSITIONS[1])
+    assert find_best_move(board, depth=6, time_limit=1e-9) == find_best_move(board, depth=1)
+
+
+def test_time_limit_is_respected_and_move_is_legal():
+    import time
+    board = chess.Board(PERFT_POSITIONS["kiwipete"][0])
+    start = time.monotonic()
+    move, score = find_best_move(board, depth=20, time_limit=0.3)
+    assert time.monotonic() - start < 2
+    assert move in board.legal_moves
+    assert isinstance(score, (int, float))
+
+
+def test_timed_out_search_returns_a_finished_depth(monkeypatch):
+    # Stop during depth 3: the answer must be the one from depth 2.
+    board = chess.Board(SEARCH_POSITIONS[1])
+    real = engine.search_root
+
+    def stop_at_three(board, depth, first_move=None):
+        if depth == 3:
+            raise engine.SearchTimeout
+        return real(board, depth, first_move)
+
+    expected = find_best_move(board, depth=2)
+    monkeypatch.setattr(engine, "search_root", stop_at_three)
+    assert find_best_move(board, depth=5, time_limit=60) == expected
+
+
+def test_deadline_cleared_after_search():
+    find_best_move(chess.Board(), depth=2, time_limit=60)
+    assert engine._deadline is None
+    find_best_move(chess.Board(PERFT_POSITIONS["kiwipete"][0]), depth=10, time_limit=0.05)
+    assert engine._deadline is None
+    # A later search without a limit is not cut short by an old deadline.
+    board = chess.Board(SEARCH_POSITIONS[1])
+    assert find_best_move(board, depth=2)[1] == plain_minimax(board, 2)
+
+
+def test_iterative_deepening_finds_mate_with_time_limit():
+    for fen, uci in MATE_IN_ONE.items():
+        move, score = find_best_move(chess.Board(fen), depth=3, time_limit=5)
+        assert move.uci() == uci
+        assert abs(score) >= MATE_SCORE
+
+
+def test_zero_time_limit_means_no_limit(monkeypatch):
+    monkeypatch.setattr(engine, "TIME_CHECK_INTERVAL", 1)
+    board = chess.Board(SEARCH_POSITIONS[1])
+    assert find_best_move(board, depth=3, time_limit=0) == find_best_move(board, depth=3)
