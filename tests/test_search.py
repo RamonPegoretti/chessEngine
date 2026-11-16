@@ -12,7 +12,8 @@ from chesscore.engine import (
     MATE_SCORE,
     evaluate,
     find_best_move,
-    minimax,
+    negamax,
+    side_sign,
     ordered_moves,
     terminal_score,
 )
@@ -57,9 +58,9 @@ def test_alpha_beta_matches_plain_minimax(fen, depth):
 
 
 @pytest.mark.parametrize("fen", SEARCH_POSITIONS[:3])
-def test_minimax_with_full_window_matches_plain_minimax(fen):
+def test_negamax_with_full_window_matches_plain_minimax(fen):
     board = chess.Board(fen)
-    assert minimax(board, 2, -INF, INF) == plain_minimax(board, 2)
+    assert negamax(board, 2, -INF, INF) * side_sign(board) == plain_minimax(board, 2)
 
 
 def test_best_move_score_is_reproducible_by_playing_it():
@@ -67,7 +68,7 @@ def test_best_move_score_is_reproducible_by_playing_it():
     move, score = find_best_move(board, depth=2)
     child = board.copy()
     child.push(move)
-    assert minimax(child, 1, -INF, INF) == score
+    assert negamax(child, 1, -INF, INF) * side_sign(child) == score
 
 
 @pytest.mark.parametrize("fen,uci", MATE_IN_ONE.items())

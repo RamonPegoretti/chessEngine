@@ -1,11 +1,12 @@
-"""Base engine (REQ-004, REQ-005): minimax search with alpha-beta pruning.
+"""Base engine (REQ-004, REQ-005): negamax search with alpha-beta pruning.
 
 The rules of chess (move generation, check, game end) come from python-chess.
 This module only decides which move to play.
 
-Scores are in centipawns from White's point of view: positive is good for
-White, negative is good for Black. White is the maximizing player and Black
-the minimizing player.
+evaluate(), terminal_score() and find_best_move() give scores in centipawns
+from White's point of view: positive is good for White, negative is good for
+Black. Inside the search, negamax() works from the point of view of the side
+to move instead, which lets one function search for both sides.
 """
 
 
@@ -290,63 +291,68 @@ def ordered_moves(board):
     return sorted(board.legal_moves, key=priority, reverse=True)
 
 
-def minimax(board, depth, alpha, beta):
-    """Minimax with alpha-beta pruning.
+def side_sign(board):
+    """+1 if White is to move, -1 if Black is: turns a score from White's
+    view into one from the side to move's view, and back."""
+    return 1 if board.turn == chess.WHITE else -1
 
-    alpha is the best score White is already sure to get, beta the best
-    score Black is already sure to get. When alpha >= beta the opponent will
-    never allow this position, so the rest of the branch is skipped.
+
+def negamax(board, depth, alpha, beta):
+    """Negamax with alpha-beta pruning (fail-soft).
+
+    The score is from the point of view of the side to move: positive is
+    good for the player who moves now. A position that is good for me is
+    exactly as bad for my opponent, so the score of a move is minus the
+    score of the position it leads to, seen by the opponent. That lets one
+    function play both sides, where minimax needs a maximizing branch for
+    White and a minimizing one for Black.
+
+    alpha is the score the side to move is already sure to get, beta the
+    score the opponent will allow. When alpha >= beta the opponent will
+    never let the game reach this position, so the remaining moves are
+    skipped. "Fail-soft" means the best score found is returned even when it
+    falls outside alpha..beta, which gives a more precise bound.
 
     Each child position is a copy of the board (REQ-004-003), so the
     original board is never modified.
     """
     score = terminal_score(board, depth)
     if score is not None:
-        return score
+        return score * side_sign(board)
     if depth == 0:
-        return evaluate(board)
+        return evaluate(board) * side_sign(board)
 
-    if board.turn == chess.WHITE:
-        best = -float("inf")
-        for move in ordered_moves(board):
-            child = board.copy()
-            child.push(move)
-            best = max(best, minimax(child, depth - 1, alpha, beta))
-            alpha = max(alpha, best)
-            if alpha >= beta:
-                break
-        return best
-
-    best = float("inf")
+    best = -float("inf")
     for move in ordered_moves(board):
         child = board.copy()
         child.push(move)
-        best = min(best, minimax(child, depth - 1, alpha, beta))
-        beta = min(beta, best)
+        # The opponent's window is ours seen from the other side: -beta..-alpha.
+        score = -negamax(child, depth - 1, -beta, -alpha)
+        best = max(best, score)
+        alpha = max(alpha, best)
         if alpha >= beta:
             break
     return best
 
 
 def find_best_move(board, depth=DEFAULT_DEPTH):
-    """Return (best move, score) for the side to move, searching `depth` plies."""
+    """Return (best move, score) for the side to move, searching `depth` plies.
+
+    The score is from White's point of view, like evaluate().
+    """
     if depth < 1:
         raise ValueError("depth must be at least 1")
 
-    maximizing = board.turn == chess.WHITE
     best_move = None
-    best_score = -float("inf") if maximizing else float("inf")
+    best_score = -float("inf")
     alpha, beta = -float("inf"), float("inf")
 
     for move in ordered_moves(board):
         child = board.copy()
         child.push(move)
-        score = minimax(child, depth - 1, alpha, beta)
-        if maximizing and score > best_score:
+        score = -negamax(child, depth - 1, -beta, -alpha)
+        if score > best_score:
             best_move, best_score = move, score
             alpha = max(alpha, score)
-        elif not maximizing and score < best_score:
-            best_move, best_score = move, score
-            beta = min(beta, score)
 
-    return best_move, best_score
+    return best_move, best_score * side_sign(board)
