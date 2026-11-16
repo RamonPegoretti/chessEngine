@@ -272,28 +272,40 @@ def terminal_score(board, depth):
     return None
 
 
+def move_priority(board, move):
+    """How promising a move looks, for move ordering: promotions first, then
+    captures (most valuable victim first, then least valuable attacker),
+    then checks, then quiet moves."""
+    if move.promotion:
+        return 20_000 + PIECE_VALUES[move.promotion]
+    if board.is_capture(move):
+        if board.is_en_passant(move):
+            victim = chess.PAWN
+        else:
+            victim = board.piece_type_at(move.to_square)
+        attacker = board.piece_type_at(move.from_square)
+        return 10_000 + 10 * PIECE_VALUES[victim] - PIECE_VALUES[attacker]
+    if board.gives_check(move):
+        return 5_000
+    return 0
+
+
 def ordered_moves(board):
     """Legal moves with the most promising ones first.
 
-    Alpha-beta cuts more branches when good moves are tried early, so
-    promotions and captures (most valuable victim first) come before checks,
-    and checks before quiet moves.
+    Alpha-beta cuts more branches when good moves are tried early.
     """
-    def priority(move):
-        if move.promotion:
-            return 20_000 + PIECE_VALUES[move.promotion]
-        if board.is_capture(move):
-            if board.is_en_passant(move):
-                victim = chess.PAWN
-            else:
-                victim = board.piece_type_at(move.to_square)
-            attacker = board.piece_type_at(move.from_square)
-            return 10_000 + 10 * PIECE_VALUES[victim] - PIECE_VALUES[attacker]
-        if board.gives_check(move):
-            return 5_000
-        return 0
+    return sorted(board.legal_moves, key=lambda move: move_priority(board, move),
+                  reverse=True)
 
-    return sorted(board.legal_moves, key=priority, reverse=True)
+
+def noisy_moves(board):
+    """Captures and promotions, best first: the moves quiescence search
+    looks at."""
+    moves = list(board.generate_legal_captures())
+    moves += [move for move in board.generate_legal_moves(to_mask=chess.BB_BACKRANKS)
+              if move.promotion and not board.is_capture(move)]
+    return sorted(moves, key=lambda move: move_priority(board, move), reverse=True)
 
 
 def side_sign(board):
@@ -326,7 +338,7 @@ def negamax(board, depth, alpha, beta):
     if score is not None:
         return score * side_sign(board)
     if depth == 0:
-        return evaluate(board) * side_sign(board)
+        return quiescence(board, alpha, beta)
 
     best = -float("inf")
     for move in ordered_moves(board):
@@ -384,6 +396,49 @@ def search_root(board, depth, first_move=None):
             best_move, best_score = move, score
             alpha = max(alpha, score)
     return best_move, best_score
+
+
+def quiescence(board, alpha, beta):
+    """Quiescence search: at the end of the normal search, keep looking at
+    captures until the position is quiet, then evaluate.
+
+    Without it the search stops at a fixed depth even in the middle of an
+    exchange: after "I take your queen" it evaluates and never sees that my
+    piece is taken back (the horizon effect).
+
+    The side to move may always "stand pat": stop capturing and keep the
+    static evaluation, because in a real game nobody is forced to capture.
+    So the static evaluation is a lower bound, and only captures that do
+    better than it are searched. Scores are from the side to move's view and
+    alpha-beta works as in negamax().
+
+    In check, standing pat is not allowed (the threat must be answered), so
+    every legal move is searched; with none, it is checkmate.
+    """
+    check_time()
+    if board.is_check():
+        moves = ordered_moves(board)
+        if not moves:
+            return terminal_score(board, 0) * side_sign(board)
+        best = -float("inf")
+    else:
+        best = evaluate(board) * side_sign(board)  # stand pat
+        if best >= beta:
+            return best
+        alpha = max(alpha, best)
+        moves = noisy_moves(board)
+
+    for move in moves:
+        # A capture can never repeat an earlier position, so the move
+        # history is not needed: copying without it is much faster.
+        child = board.copy(stack=False)
+        child.push(move)
+        score = -quiescence(child, -beta, -alpha)
+        best = max(best, score)
+        alpha = max(alpha, best)
+        if alpha >= beta:
+            break
+    return best
 
 
 def find_best_move(board, depth=DEFAULT_DEPTH, time_limit=None):

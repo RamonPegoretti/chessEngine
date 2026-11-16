@@ -15,6 +15,7 @@ from chesscore.engine import (
     negamax,
     side_sign,
     ordered_moves,
+    quiescence,
     terminal_score,
 )
 from positions import MATE_IN_ONE, PERFT_POSITIONS
@@ -23,12 +24,14 @@ INF = float("inf")
 
 
 def plain_minimax(board, depth):
-    """Reference minimax without pruning or move ordering."""
+    """Reference minimax without pruning or move ordering. The leaves use
+    the same quiescence search as the engine (with a full window, so its
+    exact value)."""
     score = terminal_score(board, depth)
     if score is not None:
         return score
     if depth == 0:
-        return evaluate(board)
+        return quiescence(board, -INF, INF) * side_sign(board)
     scores = []
     for move in board.legal_moves:
         child = board.copy()
@@ -162,13 +165,13 @@ def test_returns_legal_move_at_each_depth(depth):
     assert isinstance(score, (int, float))
 
 
-def test_deeper_search_sees_more():
-    # Depth 1 grabs the defended pawn with the queen; depth 2 sees the recapture.
+def test_quiescence_sees_recapture_at_depth_one():
+    # Taking the defended pawn with the queen loses the queen to dxe5. Without
+    # quiescence search depth 1 played it; now every depth sees the recapture.
     board = chess.Board("4k3/8/3p4/4p3/8/8/8/4QK2 w - - 0 1")
-    shallow, _ = find_best_move(board, depth=1)
-    deep, _ = find_best_move(board, depth=2)
-    assert shallow.uci() == "e1e5"
-    assert deep.uci() != "e1e5"
+    for depth in (1, 2):
+        move, _ = find_best_move(board, depth)
+        assert move.uci() != "e1e5"
 
 
 @pytest.mark.parametrize("fen", SEARCH_POSITIONS)
@@ -227,9 +230,9 @@ def test_side_sign():
 
 
 @pytest.mark.parametrize("fen", SEARCH_POSITIONS)
-def test_negamax_depth_zero_is_evaluation_for_side_to_move(fen):
+def test_negamax_depth_zero_is_quiescence_search(fen):
     board = chess.Board(fen)
-    assert negamax(board, 0, -INF, INF) == evaluate(board) * side_sign(board)
+    assert negamax(board, 0, -INF, INF) == quiescence(board, -INF, INF)
 
 
 def test_negamax_checkmated_side_to_move_scores_lowest():
