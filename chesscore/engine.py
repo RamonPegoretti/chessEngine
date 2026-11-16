@@ -10,9 +10,14 @@ to move instead, which lets one function search for both sides.
 """
 
 
+import time
+
 import chess
 
 DEFAULT_DEPTH = 3
+
+# How often (in searched positions) the search looks at the clock.
+TIME_CHECK_INTERVAL = 200
 
 MATE_SCORE = 100_000
 
@@ -316,6 +321,7 @@ def negamax(board, depth, alpha, beta):
     Each child position is a copy of the board (REQ-004-003), so the
     original board is never modified.
     """
+    check_time()
     score = terminal_score(board, depth)
     if score is not None:
         return score * side_sign(board)
@@ -335,24 +341,78 @@ def negamax(board, depth, alpha, beta):
     return best
 
 
-def find_best_move(board, depth=DEFAULT_DEPTH):
-    """Return (best move, score) for the side to move, searching `depth` plies.
+class SearchTimeout(Exception):
+    """Raised inside the search when the time for this move has run out."""
 
-    The score is from White's point of view, like evaluate().
+
+# Time limit of the search in progress (time.monotonic() value, or None for
+# no limit) and the number of positions searched so far.
+_deadline = None
+_nodes = 0
+
+
+def check_time():
+    """Count one searched position, and every TIME_CHECK_INTERVAL positions
+    stop the search if the deadline has passed."""
+    global _nodes
+    _nodes += 1
+    if (_deadline is not None and _nodes % TIME_CHECK_INTERVAL == 0
+            and time.monotonic() >= _deadline):
+        raise SearchTimeout
+
+
+def search_root(board, depth, first_move=None):
+    """Search every move of the side to move to `depth` plies.
+
+    Returns (best move, score from the side to move's view). `first_move`,
+    the best move of the previous depth, is tried first: it is probably
+    still good, and a good first move lets alpha-beta skip more.
     """
-    if depth < 1:
-        raise ValueError("depth must be at least 1")
+    moves = ordered_moves(board)
+    if first_move in moves:
+        moves.remove(first_move)
+        moves.insert(0, first_move)
 
     best_move = None
     best_score = -float("inf")
     alpha, beta = -float("inf"), float("inf")
-
-    for move in ordered_moves(board):
+    for move in moves:
         child = board.copy()
         child.push(move)
         score = -negamax(child, depth - 1, -beta, -alpha)
         if score > best_score:
             best_move, best_score = move, score
             alpha = max(alpha, score)
+    return best_move, best_score
+
+
+def find_best_move(board, depth=DEFAULT_DEPTH, time_limit=None):
+    """Return (best move, score) for the side to move.
+
+    Iterative deepening: search 1 ply deep, then 2, then 3, and so on up to
+    `depth`, each time starting with the best move found so far. The deeper
+    searches go faster thanks to that move ordering, and there is always a
+    finished answer to fall back on.
+
+    time_limit, in seconds, stops the search when it runs out (the "hard
+    bound"), even in the middle of a depth: the best move of the last
+    finished depth is played. Depth 1 is always finished, so there is always
+    a move. The score is from White's point of view, like evaluate().
+    """
+    global _deadline, _nodes
+    if depth < 1:
+        raise ValueError("depth must be at least 1")
+
+    start = time.monotonic()
+    _nodes = 0
+    best_move, best_score = search_root(board, 1)
+    _deadline = None if time_limit is None else start + time_limit
+    try:
+        for current_depth in range(2, depth + 1):
+            best_move, best_score = search_root(board, current_depth, best_move)
+    except SearchTimeout:
+        pass
+    finally:
+        _deadline = None
 
     return best_move, best_score * side_sign(board)
