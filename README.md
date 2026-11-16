@@ -79,6 +79,18 @@ Training data goes in `data/`:
 Tuning waits until about 1000 positions (around 12 games) have been
 collected, and each session changes the weights only a little.
 
+## Version test matches
+
+```
+python -m chesscore.versus
+```
+
+plays the current engine (the files on disk) against the one on the `main`
+branch, every opening once with each colour, and stops when an SPRT is sure
+whether the change made ChessCore stronger (at least 10 Elo) or not. Options:
+`--depth` (default 3), `--time` seconds per move (default 0, no limit),
+`--games`, `--baseline` (any git branch, tag or commit) and `--elo1`.
+
 ## Tests
 
 ```
@@ -87,6 +99,7 @@ python -m pytest
 
 ## Layout
 
+- `chesscore/versus.py`: version test matches with an SPRT
 - `chesscore/engine.py`: evaluation and negamax search with alpha-beta pruning (REQ-004, REQ-005)
 - `chesscore/uci.py`: external engine over UCI and the engine vs external engine mode (REQ-007)
 - `chesscore/train.py`: training mode, Elo estimate and weight tuning (REQ-010, REQ-012)

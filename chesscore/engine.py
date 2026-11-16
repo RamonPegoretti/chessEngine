@@ -397,7 +397,7 @@ def find_best_move(board, depth=DEFAULT_DEPTH, time_limit=None):
     time_limit, in seconds, stops the search when it runs out (the "hard
     bound"), even in the middle of a depth: the best move of the last
     finished depth is played. Depth 1 is always finished, so there is always
-    a move. The score is from White's point of view, like evaluate().
+    a move. None or 0 means no time limit. The score is from White's point of view, like evaluate().
     """
     global _deadline, _nodes
     if depth < 1:
@@ -406,7 +406,7 @@ def find_best_move(board, depth=DEFAULT_DEPTH, time_limit=None):
     start = time.monotonic()
     _nodes = 0
     best_move, best_score = search_root(board, 1)
-    _deadline = None if time_limit is None else start + time_limit
+    _deadline = start + time_limit if time_limit else None
     try:
         for current_depth in range(2, depth + 1):
             best_move, best_score = search_root(board, current_depth, best_move)
