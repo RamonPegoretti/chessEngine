@@ -1,6 +1,7 @@
 """JSON persistence, PGN export and engine versions (REQ-013, covers REQ-008/009/011)."""
 
 import json
+import os
 
 import chess
 import chess.pgn
@@ -126,3 +127,34 @@ def test_save_pgn_writes_readable_game(storage):
 def test_today_is_iso_date():
     text = storage_module.today()
     assert len(text) == 10 and text[4] == text[7] == "-"
+
+
+def test_old_versions_get_new_weights_filled_in(storage):
+    old_weights = {"pawn": 100, "knight": 330, "bishop": 330, "rook": 500,
+                   "queen": 900, "position": 90}
+    save_json(storage.versions_path, [
+        {"version": 1, "date": "2026-10-09", "weights": dict(DEFAULT_WEIGHTS), "note": ""},
+        {"version": 2, "date": "2026-10-10", "weights": old_weights, "note": "tuned"},
+    ])
+    current = storage.current_version()["weights"]
+    assert current == {**DEFAULT_WEIGHTS, "knight": 330, "position": 90}
+    # Reading does not rewrite the file.
+    assert load_json(storage.versions_path, None)[1]["weights"] == old_weights
+
+
+# --- Reference positions --------------------------------------------------------
+
+
+def test_positions_empty_without_file(storage):
+    assert storage.positions() == []
+
+
+def test_add_positions_appends_and_persists(storage):
+    first = [{"fen": chess.STARTING_FEN, "eval": 20}]
+    second = [{"fen": "4k3/8/8/8/8/8/8/3QK3 w - - 0 1", "eval": 900},
+              {"fen": "3qk3/8/8/8/8/8/8/4K3 w - - 0 1", "eval": -900}]
+    storage.add_positions(first)
+    storage.add_positions(iter(second))
+    assert storage.positions() == first + second
+    assert Storage(storage.data_dir).positions() == first + second
+    assert os.path.exists(storage.positions_path)

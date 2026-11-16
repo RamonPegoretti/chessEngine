@@ -197,3 +197,18 @@ def test_short_match_against_real_engine():
         board = uci.play_match_game(engine, chess.WHITE, depth=1, max_moves=5)
     assert 1 <= len(board.move_stack) <= 10
     assert uci.match_result(board) in {"1-0", "0-1", "1/2-1/2"}
+
+
+@needs_engine
+def test_reference_game_with_real_engine(monkeypatch):
+    import random
+
+    from chesscore import train
+    monkeypatch.setattr(train, "MAX_MOVES", 8)
+    monkeypatch.setattr(train, "EVAL_DEPTH", 4)
+    with uci.ExternalEngine(move_time=0.01) as player, uci.ExternalEngine() as analyser:
+        positions = train.reference_game(player, analyser, random.Random(1))
+    assert positions
+    for position in positions:
+        assert chess.Board(position["fen"]).is_valid()
+        assert isinstance(position["eval"], int)

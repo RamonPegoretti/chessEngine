@@ -221,6 +221,9 @@ class FakeExternal:
     def play(self, board):
         return next(iter(board.legal_moves))
 
+    def evaluate(self, board, depth=None):
+        return 0
+
     def __enter__(self):
         return self
 
@@ -313,6 +316,28 @@ def test_train_plays_games_and_reports(monkeypatch, capsys):
     assert "Results: 0 won, 2 drawn, 0 lost." in out
     assert "tuning starts at" in out
     assert FakeExternal.closed
+
+
+def test_train_grades_stockfish_self_play(monkeypatch, capsys):
+    from chesscore import train as train_module
+    monkeypatch.setattr(train_module, "MAX_MOVES", 8)
+    opened = []
+
+    class Recording(FakeExternal):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            opened.append(self)
+
+    monkeypatch.setattr(cli, "ExternalEngine", Recording)
+    feed(monkeypatch, "2", "1", "1500")
+    cli.train()
+    out = capsys.readouterr().out
+    # One engine to play against at the chosen Elo, one at full strength to grade.
+    assert [engine.elo for engine in opened] == [1500, None]
+    assert out.count("Stockfish is playing 2 games against itself") == 1
+    positions = cli.Storage().positions()
+    assert positions and all(p["eval"] == 0 for p in positions)
+    assert f"Collected {len(positions)} positions so far" in out
 
 
 def test_stats_without_games(capsys):
