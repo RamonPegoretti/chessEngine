@@ -346,6 +346,7 @@ def negamax(board, depth, alpha, beta):
     if depth == 0:
         return quiescence(board, alpha, beta)
 
+    original_alpha = alpha
     key = chess.polyglot.zobrist_hash(board)
     entry = TRANSPOSITION_TABLE.get(key)
     tt_move = None
@@ -361,7 +362,6 @@ def negamax(board, depth, alpha, beta):
             if alpha >= beta:
                 return entry_score
 
-    original_alpha = alpha
     moves = ordered_moves(board)
     if tt_move in moves:
         # The best move found here before is tried first.
@@ -404,7 +404,10 @@ def tt_store(key, depth, score, alpha, beta, best_move):
 
     A stored score is only reused for a search to exactly the same depth
     (see negamax), so reusing it gives the same answer as searching again,
-    mate distances included.
+    mate distances included. One exception: the key ignores the moves that
+    led to the position, so a draw by repetition (which depends on them)
+    can be missed or wrongly remembered. That is rare and accepted, as in
+    most engines.
     """
     if score <= alpha:
         bound = UPPER
