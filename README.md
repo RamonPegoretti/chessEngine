@@ -87,7 +87,7 @@ python -m pytest
 
 ## Layout
 
-- `chesscore/engine.py`: evaluation and minimax search with alpha-beta pruning (REQ-004, REQ-005)
+- `chesscore/engine.py`: evaluation and negamax search with alpha-beta pruning (REQ-004, REQ-005)
 - `chesscore/uci.py`: external engine over UCI and the engine vs external engine mode (REQ-007)
 - `chesscore/train.py`: training mode, Elo estimate and weight tuning (REQ-010, REQ-012)
 - `chesscore/storage.py`: JSON files, PGN export and engine versions (REQ-008, REQ-009, REQ-011)
