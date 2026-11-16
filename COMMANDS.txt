@@ -60,4 +60,15 @@ Show the name of every test:
 python -m pytest -v
 
 
+5b) TEST A NEW VERSION AGAINST THE OLD ONE
+-----------------------------------------
+Plays the engine on your PC against the version on GitHub's main branch
+and says whether it is stronger:
+python -m chesscore.versus
+
+Options: --depth 4 (search depth, default 3), --time 0.5 (seconds per move,
+default 0 = no limit), --games 200 (most games to play), --baseline HEAD~1
+(the version to play against).
+
+
 If "python" is not found, try "py" instead (for example: py -m chesscore).
