@@ -214,3 +214,62 @@ def test_ordered_moves_most_valuable_victim_first():
     board = chess.Board("4k3/8/8/2q1n3/3P4/8/8/4K3 w - - 0 1")
     ordered = [m.uci() for m in ordered_moves(board)]
     assert ordered.index("d4c5") < ordered.index("d4e5")
+
+
+# --- Negamax ------------------------------------------------------------------
+
+
+def test_side_sign():
+    board = chess.Board()
+    assert side_sign(board) == 1
+    board.push_uci("e2e4")
+    assert side_sign(board) == -1
+
+
+@pytest.mark.parametrize("fen", SEARCH_POSITIONS)
+def test_negamax_depth_zero_is_evaluation_for_side_to_move(fen):
+    board = chess.Board(fen)
+    assert negamax(board, 0, -INF, INF) == evaluate(board) * side_sign(board)
+
+
+def test_negamax_checkmated_side_to_move_scores_lowest():
+    for fen in ("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3",
+                "rnbqkbnr/ppppp2p/5p2/6pQ/4P3/8/PPPP1PPP/RNB1KBNR b KQkq - 1 3"):
+        board = chess.Board(fen)
+        assert negamax(board, 2, -INF, INF) <= -MATE_SCORE
+
+
+@pytest.mark.parametrize("fen", SEARCH_POSITIONS)
+def test_negamax_same_for_mirrored_position(fen):
+    # The mirror swaps the colours and the side to move, so the side to move
+    # stands exactly as well as before.
+    board = chess.Board(fen)
+    assert negamax(board, 2, -INF, INF) == negamax(board.mirror(), 2, -INF, INF)
+
+
+@pytest.mark.parametrize("fen", SEARCH_POSITIONS[:3])
+@pytest.mark.parametrize("offset", [-300, -30, 0, 30, 300])
+def test_negamax_fail_soft_bounds(fen, offset):
+    # With a narrow window around a guess, the result is exact inside the
+    # window and a correct bound outside it.
+    board = chess.Board(fen)
+    exact = negamax(board, 2, -INF, INF)
+    alpha, beta = exact + offset - 20, exact + offset + 20
+    score = negamax(board, 2, alpha, beta)
+    if score <= alpha:
+        assert exact <= score
+    elif score >= beta:
+        assert exact >= score
+    else:
+        assert score == exact
+    if alpha < exact < beta:
+        assert score == exact
+
+
+def test_find_best_move_scores_from_whites_view_for_black():
+    # Black to move, can win the white queen: the score must be good for Black,
+    # so negative.
+    board = chess.Board("r3k3/8/8/8/8/2n5/8/3QK3 b - - 0 1")
+    move, score = find_best_move(board, depth=2)
+    assert move.uci() == "c3d1"
+    assert score < 0
