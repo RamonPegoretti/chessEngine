@@ -13,6 +13,7 @@ to move instead, which lets one function search for both sides.
 import time
 
 import chess
+import chess.polyglot
 
 DEFAULT_DEPTH = 3
 
@@ -74,6 +75,8 @@ def set_weights(weights):
     MOBILITY_WEIGHT = int(weights["mobility"])
     KING_SAFETY_WEIGHT = int(weights["king_safety"])
     DEVELOPMENT_WEIGHT = int(weights["development"])
+    # Scores remembered with the old weights no longer apply.
+    clear_transposition_table()
 
 
 def with_defaults(weights):
@@ -332,6 +335,9 @@ def negamax(board, depth, alpha, beta):
 
     Each child position is a copy of the board (REQ-004-003), so the
     original board is never modified.
+
+    Results are kept in the transposition table (see tt_store), so a
+    position reached again by another move order is not searched twice.
     """
     check_time()
     score = terminal_score(board, depth)
@@ -340,17 +346,82 @@ def negamax(board, depth, alpha, beta):
     if depth == 0:
         return quiescence(board, alpha, beta)
 
+    original_alpha = alpha
+    key = chess.polyglot.zobrist_hash(board)
+    entry = TRANSPOSITION_TABLE.get(key)
+    tt_move = None
+    if entry is not None:
+        entry_depth, entry_score, entry_bound, tt_move = entry
+        if entry_depth == depth:
+            if entry_bound == EXACT:
+                return entry_score
+            if entry_bound == LOWER:
+                alpha = max(alpha, entry_score)
+            else:
+                beta = min(beta, entry_score)
+            if alpha >= beta:
+                return entry_score
+
+    moves = ordered_moves(board)
+    if tt_move in moves:
+        # The best move found here before is tried first.
+        moves.remove(tt_move)
+        moves.insert(0, tt_move)
+
     best = -float("inf")
-    for move in ordered_moves(board):
+    best_move = None
+    for move in moves:
         child = board.copy()
         child.push(move)
         # The opponent's window is ours seen from the other side: -beta..-alpha.
         score = -negamax(child, depth - 1, -beta, -alpha)
-        best = max(best, score)
+        if score > best:
+            best, best_move = score, move
         alpha = max(alpha, best)
         if alpha >= beta:
             break
+
+    tt_store(key, depth, best, original_alpha, beta, best_move)
     return best
+
+
+# --- Transposition table ------------------------------------------------------
+
+# Kinds of score stored in the transposition table. Alpha-beta does not
+# always find the exact score of a position: after a cutoff it only knows the
+# score is at least beta (LOWER bound), and when no move beats alpha it only
+# knows the score is at most alpha (UPPER bound).
+EXACT, LOWER, UPPER = 0, 1, 2
+
+# Zobrist hash of a position -> (depth, score, kind of score, best move).
+TRANSPOSITION_TABLE = {}
+TT_MAX_ENTRIES = 200_000  # about 50 MB; the table is emptied when full
+
+
+def tt_store(key, depth, score, alpha, beta, best_move):
+    """Remember the result of searching a position to `depth` plies with
+    the window alpha..beta.
+
+    A stored score is only reused for a search to exactly the same depth
+    (see negamax), so reusing it gives the same answer as searching again,
+    mate distances included. One exception: the key ignores the moves that
+    led to the position, so a draw by repetition (which depends on them)
+    can be missed or wrongly remembered. That is rare and accepted, as in
+    most engines.
+    """
+    if score <= alpha:
+        bound = UPPER
+    elif score >= beta:
+        bound = LOWER
+    else:
+        bound = EXACT
+    if len(TRANSPOSITION_TABLE) >= TT_MAX_ENTRIES:
+        TRANSPOSITION_TABLE.clear()
+    TRANSPOSITION_TABLE[key] = (depth, score, bound, best_move)
+
+
+def clear_transposition_table():
+    TRANSPOSITION_TABLE.clear()
 
 
 class SearchTimeout(Exception):
