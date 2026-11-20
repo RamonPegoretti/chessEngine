@@ -373,11 +373,10 @@ def negamax(board, depth, alpha, beta):
     best = -float("inf")
     best_move = None
     quiets_tried = []
-    for move in moves:
+    for index, move in enumerate(moves):
         child = board.copy()
         child.push(move)
-        # The opponent's window is ours seen from the other side: -beta..-alpha.
-        score = -negamax(child, depth - 1, -beta, -alpha)
+        score = pvs_child(child, depth - 1, alpha, beta, index == 0)
         if score > best:
             best, best_move = score, move
         alpha = max(alpha, best)
@@ -391,6 +390,26 @@ def negamax(board, depth, alpha, beta):
 
     tt_store(key, depth, best, original_alpha, beta, best_move)
     return best
+
+
+def pvs_child(child, depth, alpha, beta, first):
+    """Score of the move that led to `child`, from the mover's view
+    (principal variation search).
+
+    The first move is searched with the full window: the opponent's window
+    is ours seen from the other side, -beta..-alpha. Move ordering makes the
+    first move the best one most of the time, so every later move is first
+    searched with a null window alpha..alpha+1, which only answers "is it
+    better than alpha?" and cuts off much sooner. Only a move that turns out
+    better is searched again with the full window, to get its real score.
+    Scores are whole centipawns, so nothing fits between alpha and alpha+1.
+    """
+    if first or alpha == -float("inf"):
+        return -negamax(child, depth, -beta, -alpha)
+    score = -negamax(child, depth, -alpha - 1, -alpha)
+    if alpha < score < beta:
+        score = -negamax(child, depth, -beta, -alpha)
+    return score
 
 
 # --- Transposition table ------------------------------------------------------
@@ -505,10 +524,10 @@ def search_root(board, depth, first_move=None, progress=None):
     best_move = None
     best_score = -float("inf")
     alpha, beta = -float("inf"), float("inf")
-    for move in moves:
+    for index, move in enumerate(moves):
         child = board.copy()
         child.push(move)
-        score = -negamax(child, depth - 1, -beta, -alpha)
+        score = pvs_child(child, depth - 1, alpha, beta, index == 0)
         if score > best_score:
             best_move, best_score = move, score
             alpha = max(alpha, score)
