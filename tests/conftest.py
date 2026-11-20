@@ -16,6 +16,7 @@ from chesscore.storage import Storage
 def isolate_globals(monkeypatch, tmp_path):
     weights = engine.get_weights()
     engine.clear_transposition_table()  # results from earlier tests
+    engine.clear_history()
     monkeypatch.setattr(cli, "USE_SYMBOLS", cli.USE_SYMBOLS)
     monkeypatch.setattr(cli, "USE_COLORS", cli.USE_COLORS)
     monkeypatch.setattr(cli, "Storage", lambda: Storage(str(tmp_path / "data")))

@@ -290,7 +290,9 @@ def move_priority(board, move):
         return 10_000 + 10 * PIECE_VALUES[victim] - PIECE_VALUES[attacker]
     if board.gives_check(move):
         return 5_000
-    return 0
+    # Quiet moves: by how often they caused a cutoff before (between
+    # -HISTORY_MAX and HISTORY_MAX, so always below checks).
+    return HISTORY[history_index(board.turn, move)]
 
 
 def ordered_moves(board):
@@ -370,6 +372,7 @@ def negamax(board, depth, alpha, beta):
 
     best = -float("inf")
     best_move = None
+    quiets_tried = []
     for move in moves:
         child = board.copy()
         child.push(move)
@@ -378,8 +381,13 @@ def negamax(board, depth, alpha, beta):
         if score > best:
             best, best_move = score, move
         alpha = max(alpha, best)
+        quiet = not move.promotion and not board.is_capture(move)
         if alpha >= beta:
+            if quiet:
+                update_history(board.turn, move, quiets_tried, depth)
             break
+        if quiet:
+            quiets_tried.append(move)
 
     tt_store(key, depth, best, original_alpha, beta, best_move)
     return best
@@ -422,6 +430,42 @@ def tt_store(key, depth, score, alpha, beta, best_move):
 
 def clear_transposition_table():
     TRANSPOSITION_TABLE.clear()
+
+
+# --- History heuristic -------------------------------------------------------
+
+# Butterfly history: one counter per (side to move, from square, to square),
+# stored in a flat list. A quiet move that caused a beta cutoff somewhere in
+# the tree is probably good in similar positions too, so quiet moves with a
+# high counter are tried first. "Butterfly" because the counter only looks at
+# the two squares, not at the piece or the rest of the position.
+HISTORY_MAX = 4_000
+HISTORY = [0] * (2 * 64 * 64)
+
+
+def history_index(color, move):
+    return int(color) * 4096 + move.from_square * 64 + move.to_square
+
+
+def history_add(index, bonus):
+    """Add `bonus` (negative for a penalty) with "history gravity": the
+    closer a counter is to HISTORY_MAX, the less it grows, so counters stay
+    between -HISTORY_MAX and HISTORY_MAX and old information fades."""
+    HISTORY[index] += bonus - HISTORY[index] * abs(bonus) // HISTORY_MAX
+
+
+def update_history(color, cutoff_move, quiets_tried, depth):
+    """A quiet move caused a beta cutoff at `depth`: reward it, and penalise
+    the quiet moves tried before it in the same position, which did not.
+    Deeper cutoffs count more (depth squared)."""
+    bonus = min(depth * depth, HISTORY_MAX)
+    history_add(history_index(color, cutoff_move), bonus)
+    for move in quiets_tried:
+        history_add(history_index(color, move), -bonus)
+
+
+def clear_history():
+    HISTORY[:] = [0] * len(HISTORY)
 
 
 class SearchTimeout(Exception):
