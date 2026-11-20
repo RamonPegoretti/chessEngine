@@ -35,9 +35,13 @@ def cold(function, *args):
 @pytest.mark.parametrize("fen", POSITIONS)
 def test_second_search_gives_same_result(fen):
     board = chess.Board(fen)
-    first = cold(find_best_move, board, 3)
+    _, first_score = cold(find_best_move, board, 3)
     assert engine.TRANSPOSITION_TABLE
-    assert find_best_move(board, 3) == first
+    # The move can differ between equally good moves (move ordering learns
+    # from earlier searches), but the score cannot.
+    move, score = find_best_move(board, 3)
+    assert score == first_score
+    assert move in board.legal_moves
 
 
 def test_table_filled_by_other_positions_changes_nothing():
