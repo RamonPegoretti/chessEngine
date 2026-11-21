@@ -305,7 +305,8 @@ def test_search_root_tries_first_move_first(monkeypatch):
     monkeypatch.setattr(engine, "negamax", recording)
     engine.search_root(board, 2, first_move=chess.Move.from_uci("a2a3"))
     assert tried[0] == "a2a3"
-    assert sorted(tried) == sorted(m.uci() for m in board.legal_moves)
+    # With PVS a move that beats the null window is searched a second time.
+    assert sorted(set(tried)) == sorted(m.uci() for m in board.legal_moves)
 
 
 def test_search_root_ignores_illegal_first_move():
