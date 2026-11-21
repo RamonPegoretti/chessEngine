@@ -507,7 +507,8 @@ def check_time():
         raise SearchTimeout
 
 
-def search_root(board, depth, first_move=None, progress=None):
+def search_root(board, depth, first_move=None, progress=None,
+                alpha=-float("inf"), beta=float("inf")):
     """Search every move of the side to move to `depth` plies.
 
     Returns (best move, score from the side to move's view). `first_move`,
@@ -515,6 +516,10 @@ def search_root(board, depth, first_move=None, progress=None):
     still good, and a good first move lets alpha-beta skip more.
     `progress`, a dict, if given, always holds the best "move" and "score"
     found so far, so they are not lost if the time runs out.
+
+    alpha..beta is the window (see aspiration_search). A score at or below
+    alpha only means "at most this", and a score at or above beta "at least
+    this": the search stops at the first move that reaches beta.
     """
     moves = ordered_moves(board)
     if first_move in moves:
@@ -523,7 +528,6 @@ def search_root(board, depth, first_move=None, progress=None):
 
     best_move = None
     best_score = -float("inf")
-    alpha, beta = -float("inf"), float("inf")
     for index, move in enumerate(moves):
         child = board.copy()
         child.push(move)
@@ -533,7 +537,48 @@ def search_root(board, depth, first_move=None, progress=None):
             alpha = max(alpha, score)
             if progress is not None:
                 progress.update(move=move, score=score)
+            if alpha >= beta:
+                break
     return best_move, best_score
+
+
+# Aspiration windows: half-width of the first window around the previous
+# depth's score, the depth they start at, and the half-width past which a
+# failing side of the window is opened completely.
+ASPIRATION_WINDOW = 50
+ASPIRATION_MIN_DEPTH = 3
+ASPIRATION_MAX = 500
+
+
+def aspiration_search(board, depth, first_move, previous_score, progress=None):
+    """search_root with an aspiration window.
+
+    The score of a new depth is usually close to the previous one, so the
+    root is searched with the narrow window previous_score +- 50 instead of
+    -inf..+inf. A narrow window cuts much more of the tree. If the score
+    falls outside it (a "fail low" at or below alpha, or a "fail high" at or
+    above beta), that side of the window is widened, twice as far each time,
+    and the depth is searched again; past ASPIRATION_MAX it is opened
+    completely. The score returned always lies strictly inside the window
+    it was searched with, so it is exact, as with the full window.
+
+    Not used at shallow depths, where scores jump around, or after a mate
+    score, which is far from any normal score.
+    """
+    if depth < ASPIRATION_MIN_DEPTH or abs(previous_score) >= MATE_SCORE:
+        return search_root(board, depth, first_move, progress)
+    delta = ASPIRATION_WINDOW
+    alpha, beta = previous_score - delta, previous_score + delta
+    while True:
+        move, score = search_root(board, depth, first_move, progress, alpha, beta)
+        if alpha < score < beta:
+            return move, score
+        delta *= 2
+        if score <= alpha:
+            alpha = previous_score - delta if delta <= ASPIRATION_MAX else -float("inf")
+        else:
+            beta = previous_score + delta if delta <= ASPIRATION_MAX else float("inf")
+            first_move = move  # the move that failed high is tried first
 
 
 def quiescence(board, alpha, beta):
@@ -585,7 +630,8 @@ def find_best_move(board, depth=DEFAULT_DEPTH, time_limit=None):
     Iterative deepening: search 1 ply deep, then 2, then 3, and so on up to
     `depth`, each time starting with the best move found so far. The deeper
     searches go faster thanks to that move ordering, and there is always a
-    finished answer to fall back on.
+    finished answer to fall back on. From depth 3 on, each depth is searched
+    with an aspiration window around the previous score (aspiration_search).
 
     time_limit, in seconds, stops the search when it runs out (the "hard
     bound"), even in the middle of a depth: the best move of the last
@@ -610,8 +656,8 @@ def find_best_move(board, depth=DEFAULT_DEPTH, time_limit=None):
         for current_depth in range(1, depth + 1):
             progress = {}
             try:
-                best_move, best_score = search_root(board, current_depth, best_move,
-                                                    progress)
+                best_move, best_score = aspiration_search(
+                    board, current_depth, best_move, best_score, progress)
             except SearchTimeout:
                 if current_depth == 1 and progress:
                     best_move, best_score = progress["move"], progress["score"]
