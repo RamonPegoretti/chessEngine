@@ -340,6 +340,12 @@ def negamax(board, depth, alpha, beta):
 
     Results are kept in the transposition table (see tt_store), so a
     position reached again by another move order is not searched twice.
+
+    Reverse futility pruning: in a null-window node near the leaves, when
+    the static evaluation is above beta by more than RFP_MARGIN per
+    remaining ply, the node is assumed to fail high and the static
+    evaluation is returned without searching. This prunes, so unlike the
+    rest of the search it can (rarely) change the result.
     """
     check_time()
     score = terminal_score(board, depth)
@@ -349,6 +355,9 @@ def negamax(board, depth, alpha, beta):
         return quiescence(board, alpha, beta)
 
     original_alpha = alpha
+    # A PV node has a real window; PVS searches every other node with the
+    # null window alpha..alpha+1.
+    pv_node = beta - alpha > 1
     key = chess.polyglot.zobrist_hash(board)
     entry = TRANSPOSITION_TABLE.get(key)
     tt_move = None
@@ -363,6 +372,14 @@ def negamax(board, depth, alpha, beta):
                 beta = min(beta, entry_score)
             if alpha >= beta:
                 return entry_score
+
+    if (not pv_node and depth <= RFP_MAX_DEPTH and abs(beta) < MATE_SCORE
+            and not board.is_check()):
+        # Reverse futility pruning: far enough above beta that the
+        # opponent is very unlikely to catch up within `depth` plies.
+        static_eval = evaluate(board) * side_sign(board)
+        if static_eval - RFP_MARGIN * depth >= beta:
+            return static_eval
 
     moves = ordered_moves(board)
     if tt_move in moves:
@@ -390,6 +407,12 @@ def negamax(board, depth, alpha, beta):
 
     tt_store(key, depth, best, original_alpha, beta, best_move)
     return best
+
+
+# Reverse futility pruning (see negamax): deepest remaining depth it is used
+# at, and the margin in centipawns per remaining ply.
+RFP_MAX_DEPTH = 6
+RFP_MARGIN = 80
 
 
 def pvs_child(child, depth, alpha, beta, first):
