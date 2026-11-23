@@ -59,9 +59,11 @@ def test_later_move_inside_window_is_re_searched(monkeypatch):
     assert windows == [(-11, -10), (-50, -10)]
 
 
-def test_null_window_and_full_window_agree_on_the_side_of_alpha():
+def test_null_window_and_full_window_agree_on_the_side_of_alpha(monkeypatch):
     # For real searches the null window must answer "better than alpha?"
-    # the same way the full window does.
+    # the same way the full window does. Reverse futility pruning only runs
+    # in null-window nodes and can change scores, so it is turned off here.
+    monkeypatch.setattr(engine, "RFP_MAX_DEPTH", 0)
     board = chess.Board(PERFT_POSITIONS["position3"][0])
     for move in board.legal_moves:
         child = board.copy()
@@ -76,6 +78,9 @@ def test_null_window_and_full_window_agree_on_the_side_of_alpha():
 
 @pytest.mark.parametrize("name", ["kiwipete", "position3", "position4"])
 def test_pvs_matches_full_window_alpha_beta(monkeypatch, name):
+    # Reverse futility pruning only runs in null-window nodes and can
+    # change scores, so it is turned off to compare PVS on its own.
+    monkeypatch.setattr(engine, "RFP_MAX_DEPTH", 0)
     board = chess.Board(PERFT_POSITIONS[name][0])
     engine.clear_transposition_table()
     with_pvs = negamax(board, 3, -INF, INF)
